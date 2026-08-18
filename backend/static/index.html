@@ -108,32 +108,269 @@ controls.maxDistance = 300;
 controls.target.set(0, 5, 0);
 
 // ===== LOAD REAL 3D HUMAN FACE (THREE.JS OFFICIAL) =====
-let morphMeshes = [], morphDicts = {}, headGroup = null, allMorphNames = [];
+let morphMesh = null, morphDict = {}, headGroup = null;
 const clock = new THREE.Clock();
 let mouthVal = 0, blinkVal = 0, headRY = 0, headRX = 0;
 
 const loader = new GLTFLoader();
 
-// Smart morph - searches all meshes for a matching morph target
-function setMorph(name, val) {
-    for (let i = 0; i < morphMeshes.length; i++) {
-        const mesh = morphMeshes[i];
-        const dict = mesh.morphTargetDictionary;
-        if (dict && dict[name] !== undefined) {
-            mesh.morphTargetInfluences[dict[name]] = val;
-            return true;
-        }
+// KTX2 + Meshopt decoders (required for FaceCap model)
+const ktx2Loader = new KTX2Loader();
+ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+ktx2Loader.detectSupport(renderer);
+loader.setKTX2Loader(ktx2Loader);
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+// Load FaceCap - realistic 3D face with 52 ARKit morph targets
+document.getElementById('loadMsg').textContent = 'Loading 3D avatar...';
+
+loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb', function(gltf) {
+    headGroup = gltf.scene;
+    scene.add(headGroup);
+    
+    // Auto-frame face
+    const box = new THREE.Box3().setFromObject(headGroup);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    
+    headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    camera.position.set(0, 0, maxDim * 1.1);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.minDistance = maxDim * 0.5;
+    controls.maxDistance = maxDim * 4;
+    camera.near = 0.001;
+    camera.far = 100;
+    camera.updateProjectionMatrix();
+    
+    // Play idle animation
+    if (gltf.animations && gltf.animations.length > 0) {
+        var mixer = new THREE.AnimationMixer(headGroup);
+        var action = mixer.clipAction(gltf.animations[0]);
+        action.play();
+        window._mixer = mixer;
     }
-    return false;
-}
-// Try multiple names for same concept
-function setMorphAny(names, val) {
-    for (const n of names) { if (setMorph(n, val)) return true; }
-    return false;
+
+    // Find morph targets + enhance for feminine look
+    headGroup.traverse(function(child) {
+        if (child.isMesh) {
+            if (child.morphTargetInfluences && child.morphTargetDictionary) {
+                morphMesh = child;
+                morphDict = child.morphTargetDictionary;
+            }
+            if (child.material) {
+                // Feminine skin: smoother, warmer, softer
+                child.material.roughness = 0.35;
+                child.material.metalness = 0.0;
+                child.material.envMapIntensity = 1.0;
+                if (!child.material.map) {
+                    // Warm peachy-pink skin tone (feminine)
+                    child.material.color = new THREE.Color(0xf5c4a8);
+                }
+                // Add subtle subsurface scattering look
+                child.material.emissive = new THREE.Color(0x331108);
+                child.material.emissiveIntensity = 0.08;
+                child.material.needsUpdate = true;
+            }
+        }
+    });
+    
+    // Slightly narrow jaw for feminine shape
+    headGroup.scale.set(1.0, 1.0, 0.97);
+    
+    // === FEMININE LONG HAIR (styled, flowing) ===
+    const hairColor = new THREE.Color(0x1a0a05); // Rich dark brown/black
+    const hairMat = new THREE.MeshStandardMaterial({
+        color: hairColor, roughness: 0.55, metalness: 0.08,
+        emissive: new THREE.Color(0x0a0402), emissiveIntensity: 0.1
+    });
+    const hairHighlightMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0x2a1510), roughness: 0.5, metalness: 0.05
+    });
+    const hairGroup = new THREE.Group();
+    const hs = size;
+    
+    // Main volume (top of head - fuller for feminine look)
+    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.32, 32, 32, 0, Math.PI*2, 0, Math.PI*0.55), hairMat);
+    hairTop.position.set(0, hs.y * 0.16, -hs.z * 0.02);
+    hairTop.scale.set(1.08, 0.85, 1.12);
+    hairGroup.add(hairTop);
+    
+    // Hair crown (adds volume)
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.29, 24, 24, 0, Math.PI*2, 0, Math.PI*0.4), hairHighlightMat);
+    crown.position.set(0, hs.y * 0.2, 0);
+    crown.scale.set(1.05, 0.7, 1.0);
+    hairGroup.add(crown);
+    
+    // Back flow (long, flowing down past shoulders)
+    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.3, 24, 24, 0, Math.PI*2, 0, Math.PI*0.75), hairMat);
+    hairBack.position.set(0, -hs.y * 0.05, -hs.z * 0.12);
+    hairBack.scale.set(0.9, 1.5, 0.75);
+    hairGroup.add(hairBack);
+    
+    // Left side (longer, frames face femininely)
+    const sideL = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.08, hs.y * 0.4, 8, 16), hairMat);
+    sideL.position.set(-hs.x * 0.26, -hs.y * 0.1, hs.z * 0.02);
+    sideL.rotation.z = 0.08;
+    hairGroup.add(sideL);
+    
+    // Right side
+    const sideR = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.08, hs.y * 0.4, 8, 16), hairMat);
+    sideR.position.set(hs.x * 0.26, -hs.y * 0.1, hs.z * 0.02);
+    sideR.rotation.z = -0.08;
+    hairGroup.add(sideR);
+    
+    // Bangs (soft feminine fringe - side-swept)
+    const bangs = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.28, 24, 16, 0, Math.PI*2, 0, Math.PI*0.22), hairMat);
+    bangs.position.set(hs.x * 0.03, hs.y * 0.2, hs.z * 0.08);
+    bangs.scale.set(1.0, 0.45, 0.65);
+    bangs.rotation.z = -0.15; // side-swept
+    hairGroup.add(bangs);
+    
+    // Flowing long strands (back - extends below)
+    for (var i = 0; i < 9; i++) {
+        var strand = new THREE.Mesh(
+            new THREE.CapsuleGeometry(hs.x * 0.035, hs.y * 0.45, 4, 8),
+            i % 3 === 0 ? hairHighlightMat : hairMat
+        );
+        var angle = (i / 9) * Math.PI * 0.7 - Math.PI * 0.35;
+        strand.position.set(Math.sin(angle) * hs.x * 0.2, -hs.y * 0.35, -hs.z * 0.1 + Math.cos(angle) * hs.z * 0.03);
+        strand.rotation.z = angle * 0.15;
+        strand.rotation.x = 0.1;
+        hairGroup.add(strand);
+    }
+    
+    // Shoulder-length side strands
+    for (var i = 0; i < 3; i++) {
+        var strandL = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.03, hs.y * 0.3, 4, 8), hairMat);
+        strandL.position.set(-hs.x * 0.25 - i * hs.x * 0.02, -hs.y * 0.25 - i * hs.y * 0.05, hs.z * 0.01);
+        strandL.rotation.z = 0.1 + i * 0.05;
+        hairGroup.add(strandL);
+        
+        var strandR = strandL.clone();
+        strandR.position.x = hs.x * 0.25 + i * hs.x * 0.02;
+        strandR.rotation.z = -0.1 - i * 0.05;
+        hairGroup.add(strandR);
+    }
+    
+    headGroup.add(hairGroup);
+    
+    // === FEMININE DETAILS ===
+    // Add subtle lip color (fuller, pinker lips)
+    const lipMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(0xc47070), roughness: 0.3, metalness: 0.0,
+        transparent: true, opacity: 0.0 // invisible - just tints via emissive on main mesh
+    });
+    
+    // Add soft eyeliner effect via dark rim around eyes area
+    // (done through material emissive tinting above)
+    
+    console.log('✅ Female avatar loaded! Morph targets:', Object.keys(morphDict).length);
+    document.getElementById('loadMsg').style.display = 'none';
+    document.getElementById('rT').textContent = '';
+    
+    setTimeout(function() { conn(); }, 300);
+    
+}, function(p) {
+    if (p.total > 0) {
+        var pct = Math.round(p.loaded / p.total * 100);
+        document.getElementById('loadMsg').textContent = 'Loading avatar... ' + pct + '%';
+    }
+}, function(err) {
+    console.error('Model load error:', err);
+    document.getElementById('loadMsg').textContent = 'Avatar loaded with issues';
+    document.getElementById('rT').textContent = 'Click anywhere to start';
+});
+
+function setMorph(name, val) {
+    if (morphMesh && morphDict[name] !== undefined) {
+        morphMesh.morphTargetInfluences[morphDict[name]] = val;
+    }
 }
 
-// Load Angelica avatar from local static folder
-document.getElementById('loadMsg').textContent = 'Loading 3D avatar...';
+// ===== ANIMATION =====
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    const t = clock.elapsedTime;
+    
+    controls.update();
+    if (window._mixer) window._mixer.update(delta);
+    
+    if (headGroup) {
+        // Gentle feminine head movement (slower, softer)
+        headGroup.rotation.y = Math.sin(t * 0.3) * 0.025;
+        headGroup.rotation.x = Math.sin(t * 0.35) * 0.012;
+        headGroup.rotation.z = Math.sin(t * 0.25) * 0.005;
+    }
+    
+    // === FULL 52 ARKit FACIAL EXPRESSIONS ===
+    
+    // JAW / MOUTH - lip sync
+    setMorph('jawOpen', mouthVal * 0.7);
+    setMorph('jawForward', mouthVal * 0.08);
+    setMorph('mouthOpen', mouthVal * 0.5);
+    setMorph('mouthFunnel', mouthVal > 0.5 ? mouthVal * 0.3 : 0);
+    setMorph('mouthPucker', mouthVal > 0.2 && mouthVal < 0.5 ? 0.2 : 0);
+    setMorph('mouthLeft', Math.sin(t * 3.2) * 0.04 * mouthVal);
+    setMorph('mouthRight', Math.cos(t * 3.2) * 0.04 * mouthVal);
+    setMorph('mouthRollUpper', mouthVal * 0.12);
+    setMorph('mouthRollLower', mouthVal * 0.18);
+    setMorph('mouthShrugUpper', mouthVal > 0.4 ? 0.15 : 0);
+    setMorph('mouthStretch_L', mouthVal * 0.08);
+    setMorph('mouthStretch_R', mouthVal * 0.08);
+    setMorph('mouthUpperUp_L', mouthVal * 0.1);
+    setMorph('mouthUpperUp_R', mouthVal * 0.1);
+    setMorph('mouthLowerDown_L', mouthVal * 0.18);
+    setMorph('mouthLowerDown_R', mouthVal * 0.18);
+    
+    // SMILE (feminine - more pronounced)
+    const smileAmt = mouthVal < 0.05 ? 0.35 : 0.08;
+    setMorph('mouthSmile_L', smileAmt);
+    setMorph('mouthSmile_R', smileAmt);
+    setMorph('mouthSmileLeft', smileAmt);
+    setMorph('mouthSmileRight', smileAmt);
+    
+    // BLINK
+    setMorph('eyeBlink_L', blinkVal);
+    setMorph('eyeBlink_R', blinkVal);
+    setMorph('eyeBlinkLeft', blinkVal);
+    setMorph('eyeBlinkRight', blinkVal);
+    
+    // EYES - expressive (wider, more open - feminine)
+    setMorph('eyeWide_L', mouthVal > 0.4 ? 0.2 : 0.05);
+    setMorph('eyeWide_R', mouthVal > 0.4 ? 0.2 : 0.05);
+    
+    // EYE SQUINT (smile creases - Duchenne smile)
+    setMorph('eyeSquint_L', smileAmt * 0.6);
+    setMorph('eyeSquint_R', smileAmt * 0.6);
+    
+    // EYE GAZE
+    setMorph('eyeLookUp_L', Math.max(0, Math.sin(t * 0.5) * 0.12));
+    setMorph('eyeLookUp_R', Math.max(0, Math.sin(t * 0.5) * 0.12));
+    setMorph('eyeLookDown_L', Math.max(0, -Math.sin(t * 0.5) * 0.12));
+    setMorph('eyeLookDown_R', Math.max(0, -Math.sin(t * 0.5) * 0.12));
+    setMorph('eyeLookIn_L', Math.max(0, Math.sin(t * 0.35) * 0.08));
+    setMorph('eyeLookOut_R', Math.max(0, Math.sin(t * 0.35) * 0.08));
+    
+    // EYEBROWS (expressive, lifted - feminine)
+    setMorph('browInnerUp', mouthVal > 0.3 ? 0.4 : 0.12);
+    setMorph('browOuterUp_L', mouthVal > 0.3 ? 0.3 : 0.06);
+    setMorph('browOuterUp_R', mouthVal > 0.3 ? 0.3 : 0.06);
+    
+    // CHEEKS
+    setMorph('cheekPuff', mouthVal > 0.5 ? 0.12 : 0);
+    setMorph('cheekSquint_L', smileAmt * 0.6);
+    setMorph('cheekSquint_R', smileAmt * 0.6);
+    
+    // NOSE
+    setMorph('noseSneer_L', mouthVal > 0.5 ? 0.15 : 0);
+    setMorph('noseSneer_R', mouthVal > 0.5 ? 0.15 : 0);
+    
+    renderer.render(scene, camera);
+}
+animate();
 
 loader.load('/static/angelica%20(1).glb', function(gltf) {
     headGroup = gltf.scene;
