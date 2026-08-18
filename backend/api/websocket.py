@@ -211,33 +211,24 @@ async def handle_speech(
         logger.error("Bedrock/AI error", error=str(e))
         response_text = f"I heard you say: '{text}'. I'm having trouble connecting right now, but I'm here to help!"
 
-    # Save conversation to MySQL (non-blocking, skip if DB unavailable)
+    # Save conversation to MySQL using reliable helpers
     try:
-        from database.database import AsyncSessionLocal
-        if AsyncSessionLocal:
-            from database.mysql_visitor import MySQLVisitorService
-            async with AsyncSessionLocal() as db:
-                svc = MySQLVisitorService(db)
-                session = conv_manager.get_session(session_id)
-                
-                if session and session.visitor_context.name:
-                    visitor = await svc.find_visitor_by_name(session.visitor_context.name)
-                    
-                    if not visitor:
-                        vid = await svc.register_visitor(name=session.visitor_context.name)
-                        await svc.log_visit(vid)
-                        logger.info("NEW visitor saved", name=session.visitor_context.name, id=vid)
-                        
-                        # Tell frontend to register face for this visitor
-                        await ws_manager.send_to_client(client_id, {
-                            "type": "register_face",
-                            "name": session.visitor_context.name
-                        })
-                    elif visitor:
-                        await svc.save_conversation(visitor['id'], 'visitor', text)
-                        await svc.save_conversation(visitor['id'], 'ai', response_text)
+        from database.database import save_visitor_to_db, save_conversation_to_db, log_visit_to_db
+
+        session = conv_manager.get_session(session_id)
+        if session and session.visitor_context.name:
+            visitor_name = session.visitor_context.name
+
+            # Ensure visitor exists in DB (idempotent - won't duplicate)
+            await save_visitor_to_db(name=visitor_name)
+
+            # Save both sides of the conversation
+            await save_conversation_to_db(visitor_name=visitor_name, role='visitor', message=text)
+            await save_conversation_to_db(visitor_name=visitor_name, role='ai', message=response_text)
+
+            logger.info("✅ Conversation saved to DB", visitor=visitor_name)
     except Exception as e:
-        logger.warning("DB save skipped", error=str(e))
+        logger.warning("DB conversation save failed", error=str(e))
 
     # Generate audio (non-critical)
     audio_base64 = None
@@ -303,20 +294,14 @@ async def handle_start_session(
     # Generate greeting
     try:
         if match_status == "match_found" and person_name:
-            # RETURNING VISITOR - increment visit count ONCE
+            # RETURNING VISITOR - update via reliable helper
             try:
-                from database.database import AsyncSessionLocal
-                if AsyncSessionLocal:
-                    from sqlalchemy import text as sql_text
-                    async with AsyncSessionLocal() as db:
-                        await db.execute(
-                            sql_text("UPDATE visitor SET last_seen=NOW(), visit_count=visit_count+1 WHERE LOWER(name)=LOWER(:name)"),
-                            {"name": person_name}
-                        )
-                        await db.commit()
-                        logger.info("Updated last_seen for returning visitor", name=person_name)
+                from database.database import save_visitor_to_db, log_visit_to_db
+                await save_visitor_to_db(name=person_name)
+                await log_visit_to_db(visitor_name=person_name)
+                logger.info("✅ Returning visitor updated", name=person_name)
             except Exception as e:
-                logger.warning("DB update failed", error=str(e))
+                logger.warning("DB update for returning visitor failed", error=str(e))
             
             # Direct greeting with name
             greeting = f"Hi {person_name}! Welcome back to Code Origin.AI. How can I help you today?"

@@ -224,64 +224,52 @@ class ConversationManager:
         if extracted_name and extracted_name.upper() != "UNKNOWN":
             session.visitor_context.name = extracted_name
             
+            # Use the reliable DB helper functions directly
+            from database.database import save_visitor_to_db, log_visit_to_db, AsyncSessionLocal
+
             # CHECK DATABASE: Is this a returning visitor?
+            is_returning = False
+            visit_count = 0
             try:
-                import httpx
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(f"http://localhost:5000/api/lookup-visitor/{extracted_name}", timeout=3)
-                    data = resp.json()
-                    if data.get("found"):
-                        # RETURNING VISITOR!
-                        visit_count = data.get("visit_count", 2)
-                        session.state = ConversationState.ACTIVE_CONVERSATION
-                        response = (
-                            f"Welcome back, {extracted_name}! Great to see you again. "
-                            f"You've visited us {visit_count} times now. How can I help you today?"
-                        )
-                        session.add_message("assistant", response)
-                        return response
-            except Exception:
-                pass  # DB lookup failed, treat as new
-            
-            # NEW VISITOR - SAVE IMMEDIATELY (no consent asking)
-            try:
-                import httpx
-                async with httpx.AsyncClient() as client:
-                    # Call our own API to save - this definitely works
-                    resp = await client.post(
-                        "http://localhost:5000/api/face/register?name=" + extracted_name,
-                        json={"image": ""},  # Empty image - just save name
-                        timeout=5
-                    )
-                    logger.info("Save via API result", status=resp.status_code, body=resp.text[:100])
-            except Exception as e:
-                logger.error("Save via API failed", error=str(e))
-            
-            # Also try direct DB save as backup
-            try:
-                from database.database import AsyncSessionLocal
                 if AsyncSessionLocal:
                     from sqlalchemy import text
                     async with AsyncSessionLocal() as db:
                         result = await db.execute(
-                            text("SELECT id FROM visitor WHERE LOWER(name)=LOWER(:name)"),
-                            {"name": extracted_name}
+                            text("SELECT id, name, visit_count FROM visitor WHERE LOWER(name) = LOWER(:name) LIMIT 1"),
+                            {"name": extracted_name.strip()}
                         )
-                        if not result.mappings().first():
+                        row = result.mappings().first()
+                        if row:
+                            is_returning = True
+                            visit_count = row['visit_count'] + 1
+                            # Update last_seen + visit_count
                             await db.execute(
-                                text("INSERT INTO visitor (name, consent_status, first_seen, last_seen) VALUES (:name, 'granted', NOW(), NOW())"),
-                                {"name": extracted_name}
+                                text("UPDATE visitor SET last_seen = NOW(), visit_count = visit_count + 1 WHERE id = :id"),
+                                {"id": row['id']}
                             )
                             await db.commit()
-                            logger.info("✅ VISITOR SAVED TO DB (direct)", name=extracted_name)
-                        else:
-                            logger.info("Visitor already exists in DB", name=extracted_name)
-                else:
-                    logger.error("AsyncSessionLocal is None!")
+                            logger.info("✅ Returning visitor updated", name=extracted_name, visits=visit_count)
             except Exception as e:
-                logger.error("Direct DB save failed", error=str(e))
-            
-            # Go straight to active conversation (no consent question)
+                logger.error("DB lookup failed", error=str(e))
+
+            if is_returning:
+                session.state = ConversationState.ACTIVE_CONVERSATION
+                response = (
+                    f"Welcome back, {extracted_name}! Great to see you again. "
+                    f"You've visited us {visit_count} times now. How can I help you today?"
+                )
+                session.add_message("assistant", response)
+                return response
+
+            # NEW VISITOR - Save directly to DB
+            saved = await save_visitor_to_db(name=extracted_name)
+            if saved:
+                await log_visit_to_db(visitor_name=extracted_name, purpose="Walk-in")
+                logger.info("✅ New visitor + visit saved", name=extracted_name)
+            else:
+                logger.error("❌ Failed to save new visitor!", name=extracted_name)
+
+            # Go straight to active conversation
             session.state = ConversationState.ACTIVE_CONVERSATION
 
             response = (
@@ -306,32 +294,18 @@ class ConversationManager:
         user_lower = user_text.lower()
 
         if any(word in user_lower for word in positive_indicators):
-            # Consent granted - SAVE TO DATABASE IMMEDIATELY
+            # Consent granted - SAVE TO DATABASE
             session.visitor_context.recognition_status = VisitorStatus.NEW
             session.state = ConversationState.ACTIVE_CONVERSATION
 
-            # SAVE NAME TO MySQL RIGHT NOW
-            try:
-                from database.database import AsyncSessionLocal
-                if AsyncSessionLocal:
-                    from sqlalchemy import text
-                    async with AsyncSessionLocal() as db:
-                        # Check if already exists
-                        result = await db.execute(
-                            text("SELECT id FROM visitor WHERE LOWER(name)=LOWER(:name)"),
-                            {"name": session.visitor_context.name}
-                        )
-                        if not result.mappings().first():
-                            await db.execute(
-                                text("INSERT INTO visitor (name, consent_status, first_seen, last_seen) VALUES (:name, 'granted', NOW(), NOW())"),
-                                {"name": session.visitor_context.name}
-                            )
-                            await db.commit()
-                            import structlog
-                            structlog.get_logger().info("✅ VISITOR SAVED TO DB", name=session.visitor_context.name)
-            except Exception as e:
-                import structlog
-                structlog.get_logger().error("DB save in consent failed", error=str(e))
+            # Save visitor using reliable helper
+            from database.database import save_visitor_to_db, log_visit_to_db
+            saved = await save_visitor_to_db(name=session.visitor_context.name)
+            if saved:
+                await log_visit_to_db(visitor_name=session.visitor_context.name)
+                logger.info("✅ Visitor saved on consent", name=session.visitor_context.name)
+            else:
+                logger.error("❌ Failed to save visitor on consent", name=session.visitor_context.name)
 
             response = (
                 f"Thank you, {session.visitor_context.name}! "

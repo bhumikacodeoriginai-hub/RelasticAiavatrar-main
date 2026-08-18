@@ -345,6 +345,85 @@ async def lookup_visitor(name: str):
         return {"found": False, "error": str(e)}
 
 
+@app.post("/api/save-visitor")
+async def save_visitor(request_data: dict = None):
+    """
+    Dedicated endpoint to save a visitor to MySQL.
+    Body: {"name": "...", "email": "...", "phone": "...", "company": "..."}
+    All fields except name are optional.
+    """
+    from fastapi import Request
+    from database.database import save_visitor_to_db, log_visit_to_db
+
+    if not request_data or not request_data.get("name"):
+        return JSONResponse(status_code=400, content={"success": False, "error": "name is required"})
+
+    name = request_data["name"].strip()
+    email = request_data.get("email")
+    phone = request_data.get("phone")
+    company = request_data.get("company")
+
+    saved = await save_visitor_to_db(name=name, email=email, phone=phone, company=company)
+
+    if saved:
+        # Also log the visit
+        await log_visit_to_db(visitor_name=name, purpose=request_data.get("purpose", "Walk-in"))
+        return {"success": True, "name": name, "message": f"Visitor '{name}' saved to database"}
+    else:
+        return JSONResponse(status_code=500, content={"success": False, "error": "Failed to save to database"})
+
+
+@app.get("/api/visitors/list")
+async def list_all_visitors():
+    """Get all visitors from MySQL - for debugging/dashboard."""
+    try:
+        from database.database import AsyncSessionLocal
+        if not AsyncSessionLocal:
+            return {"visitors": [], "error": "Database not connected"}
+
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT id, name, email, phone, company, consent_status, visit_count, first_seen, last_seen FROM visitor ORDER BY last_seen DESC LIMIT 100")
+            )
+            rows = result.mappings().all()
+            visitors = [dict(row) for row in rows]
+            # Convert datetime objects to strings
+            for v in visitors:
+                for key in ['first_seen', 'last_seen']:
+                    if v.get(key):
+                        v[key] = str(v[key])
+            return {"visitors": visitors, "count": len(visitors)}
+    except Exception as e:
+        return {"visitors": [], "error": str(e)}
+
+
+@app.get("/api/conversations/list")
+async def list_conversations():
+    """Get recent conversations from MySQL - for debugging/dashboard."""
+    try:
+        from database.database import AsyncSessionLocal
+        if not AsyncSessionLocal:
+            return {"conversations": [], "error": "Database not connected"}
+
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("""SELECT c.id, c.role, c.message, c.timestamp, v.name as visitor_name
+                        FROM conversations c
+                        JOIN visitor v ON c.visitor_id = v.id
+                        ORDER BY c.timestamp DESC LIMIT 50""")
+            )
+            rows = result.mappings().all()
+            conversations = [dict(row) for row in rows]
+            for c in conversations:
+                if c.get('timestamp'):
+                    c['timestamp'] = str(c['timestamp'])
+            return {"conversations": conversations, "count": len(conversations)}
+    except Exception as e:
+        return {"conversations": [], "error": str(e)}
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Global exception handler."""
