@@ -87,7 +87,9 @@ async def identify_face(data: FaceFrame, request: Request):
     
     except Exception as e:
         logger.error("Face identify error", error=str(e))
-        return {"found": False, "no_face": True, "error": str(e)}
+        # If we got here, a face WAS detected but DB lookup failed
+        # Return "unknown_face" so frontend still starts a new visitor conversation
+        return {"found": False, "no_face": False, "reason": "unknown_face", "error": str(e)}
 
 
 @router.post("/register")

@@ -28,16 +28,16 @@ class Settings(BaseSettings):
     bedrock_temperature: float = 0.5
     bedrock_top_p: float = 0.9
 
-    # AWS Polly
+    # AWS Polly (Aditi only supports "standard" engine, not "neural")
     polly_voice_id: str = "Aditi"
-    polly_engine: str = "neural"
+    polly_engine: str = "standard"
     polly_language_code: str = "en-IN"
 
     # AWS Transcribe
     transcribe_language_code: str = "en-IN"
 
     # Database (MySQL - localhost)
-    database_url: str = "mysql+aiomysql://appuser:StrongPassword%40123@localhost:3306/myapp"
+    database_url: str = "mysql+aiomysql://appuser:StrongPassword%40123@127.0.0.1:3306/myapp"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
