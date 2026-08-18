@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment variables
+.env
+!.env.example
+
+# Models (large files)
+models/*.onnx
+models/*.pt
+models/*.pth
+models/*.bin
+
+# Database
+*.db
+*.sqlite3
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node.js
+node_modules/
+.next/
+out/
+
+# Docker
+.docker/
+
+# Uploads and temporary files
+uploads/
+temp/
+tmp/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Assets (generated)
+assets/generated/
+
+# Face embeddings cache
+face_cache/

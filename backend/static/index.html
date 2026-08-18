@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Origin.AI — Intelligent Reception</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+    </script>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;overflow:hidden}
+        body{font-family:'Inter',sans-serif;background:#000;color:#fff;-webkit-font-smoothing:antialiased}
+        .app{display:grid;grid-template-columns:1fr 340px;height:100vh}
+        .main{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#000}
+        .hdr{position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 24px;z-index:10}
+        .logo{display:flex;align-items:center;gap:8px}.logo-i{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}.logo-t{font-size:14px;font-weight:700}.logo-s{font-size:8px;color:#555;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;margin-top:1px}
+        .chips{display:flex;gap:6px}.chip{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:12px;background:#0f0f15;border:1px solid #1a1a25;font-size:9px;color:#666}.cd{width:5px;height:5px;border-radius:50%}.cd.g{background:#0f0;box-shadow:0 0 4px #0f0}.cd.r{background:#f00}.cd.y{background:#fa0;animation:bl 1.5s infinite}@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
+        .av-wrap{width:100%;height:100%;position:absolute;top:0;left:0}
+        #c3d{width:100%;height:100%;display:block}
+        .glow{position:absolute;inset:-4px;border-radius:20px;border:2px solid transparent;transition:all .6s;pointer-events:none}.glow.speaking{border-color:#2563eb;box-shadow:0 0 40px rgba(37,99,235,.15)}.glow.listening{border-color:#10b981;box-shadow:0 0 40px rgba(16,185,129,.12)}.glow.thinking{border-color:#f59e0b;box-shadow:0 0 40px rgba(245,158,11,.12)}
+        .wf{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:3px;align-items:flex-end;height:24px;opacity:0;transition:opacity .3s}.wf.on{opacity:1}.wvb{width:3px;border-radius:2px;background:#2563eb;animation:wva .4s ease-in-out infinite alternate}.wvb:nth-child(1){height:5px;animation-delay:0s}.wvb:nth-child(2){height:12px;animation-delay:.06s}.wvb:nth-child(3){height:18px;animation-delay:.12s}.wvb:nth-child(4){height:12px;animation-delay:.06s}.wvb:nth-child(5){height:5px;animation-delay:0s}@keyframes wva{to{height:3px}}
+        .stl{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:14px;font-size:10px;font-weight:600;background:rgba(15,15,21,0.8);border:1px solid #1a1a25;color:#555;letter-spacing:.3px;z-index:10}.stl.speaking{color:#2563eb;border-color:rgba(37,99,235,.25)}.stl.listening{color:#10b981;border-color:rgba(16,185,129,.25)}.stl.thinking{color:#f59e0b;border-color:rgba(245,158,11,.25)}
+        .resp{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);max-width:500px;text-align:center;z-index:10}.resp p{font-size:14px;font-weight:400;line-height:1.5;color:#ccc;background:rgba(0,0,0,0.7);padding:6px 16px;border-radius:10px}
+        .livs{position:absolute;bottom:80px;left:50%;transform:translateX(-50%);padding:6px 16px;border-radius:16px;font-size:12px;background:rgba(16,185,129,.1);border:1px solid rgba(16,185,129,.15);color:#6ee7b7;display:none;max-width:440px;text-align:center;z-index:10}
+        .loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14px;color:#666;z-index:10}
+        .panel{background:#050508;border-left:1px solid #111;display:flex;flex-direction:column}
+        .ph{padding:10px 14px;border-bottom:1px solid #111;font-size:9px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:.8px;display:flex;align-items:center;justify-content:space-between}
+        .lb{padding:1px 5px;border-radius:6px;font-size:7px;font-weight:700;background:#1a0000;color:#f44;border:1px solid #300;display:none}
+        .camb{height:200px;background:#000;position:relative;display:flex;align-items:center;justify-content:center}.camb video{width:100%;height:100%;object-fit:cover}
+        .vc{padding:8px 12px;display:none}.vci{background:#0a0a0f;border:1px solid #151520;border-radius:6px;padding:8px 12px}.vcn{font-size:12px;font-weight:600}.vcx{font-size:9px;color:#444;margin-top:1px}
+        .tls{flex:1;display:flex;flex-direction:column;overflow:hidden;border-top:1px solid #111}.tl{flex:1;overflow-y:scroll;padding:8px 10px;max-height:calc(100vh - 280px)}
+        .te{margin-bottom:8px}.teh{display:flex;gap:4px;align-items:center;margin-bottom:1px}.ter{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}.ter.a{color:#2563eb}.ter.u{color:#10b981}.tet{font-size:7px;color:#2a2a2a}.teb{font-size:10px;color:#666;line-height:1.5}
+        ::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:1px}
+        .loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#444;z-index:5}
+    </style>
+</head>
+<body>
+<div class="app">
+    <div class="main">
+        <div class="hdr">
+            <div class="logo"><div class="logo-i">CO</div><div><div class="logo-t">Code Origin.AI</div><div class="logo-s">Intelligent Reception</div></div></div>
+            <div class="chips"><div class="chip"><div class="cd g"></div>AI</div><div class="chip"><div class="cd" id="dM"></div><span id="lM">—</span></div><div class="chip"><div class="cd" id="dC"></div><span id="lC">...</span></div></div>
+        </div>
+        <div class="av-wrap"><div class="loading" id="loadMsg">Loading 3D avatar...</div><canvas id="c3d"></canvas><div class="wf" id="wf"><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div></div></div>
+        <div class="stl" id="stl">Click anywhere to start</div>
+        <div class="resp"><p id="rT">Click anywhere on screen to activate voice</p></div>
+        <div class="livs" id="livs"></div>
+    </div>
+    <div class="panel">
+        <div class="ph">Entrance Monitor <span class="lb" id="lbx">● LIVE</span></div>
+        <div class="camb"><video id="vid" autoplay muted playsinline></video><div class="camph" id="cph" style="display:none"></div></div>
+        <div class="vc" id="vc"><div class="vci"><div class="vcn" id="vn">—</div><div class="vcx">Visitor</div></div></div>
+        <div class="tls"><div class="ph">Transcript</div><div class="tl" id="tl"></div></div>
+    </div>
+</div>
+<audio id="aud"></audio>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+
+// ===== SCENE SETUP =====
+const canvas = document.getElementById('c3d');
+const mainEl = document.querySelector('.main');
+const W = mainEl.clientWidth;
+const H = mainEl.clientHeight;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x12101a);
+
+const camera = new THREE.PerspectiveCamera(35, W/H, 0.1, 1000);
+camera.position.set(0, 0, 5);
+
+const renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: false});
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+// Lighting - realistic skin rendering (warm key + cool fill = skin looks natural)
+scene.add(new THREE.AmbientLight(0xfff5ee, 0.5));
+const key = new THREE.DirectionalLight(0xfff0dd, 2.0); key.position.set(1.5, 2, 3); scene.add(key);
+const fill = new THREE.DirectionalLight(0x9db8e0, 0.6); fill.position.set(-2, 0.5, 2); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffeedd, 1.0); rim.position.set(0, 1, -3); scene.add(rim);
+const bottom = new THREE.DirectionalLight(0xffddcc, 0.3); bottom.position.set(0, -2, 1); scene.add(bottom);
+
+// Environment map for realistic skin reflections
+const pmremGenerator = new THREE.PMREMGenerator(renderer);
+const envScene = new THREE.Scene();
+envScene.background = new THREE.Color(0x888899);
+const envMap = pmremGenerator.fromScene(envScene).texture;
+scene.environment = envMap;
+
+// OrbitControls - drag to rotate, scroll to zoom, right-click to pan
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.screenSpacePanning = true;
+controls.minDistance = 10;
+controls.maxDistance = 300;
+controls.target.set(0, 5, 0);
+
+// ===== LOAD REAL 3D HUMAN FACE (THREE.JS OFFICIAL) =====
+let morphMesh = null, morphDict = {}, headGroup = null;
+const clock = new THREE.Clock();
+let mouthVal = 0, blinkVal = 0, headRY = 0, headRX = 0;
+
+const loader = new GLTFLoader();
+
+// KTX2 + Meshopt decoders (required for FaceCap model)
+const ktx2Loader = new KTX2Loader();
+ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
+ktx2Loader.detectSupport(renderer);
+loader.setKTX2Loader(ktx2Loader);
+loader.setMeshoptDecoder(MeshoptDecoder);
+
+// Load FaceCap - realistic 3D face with 52 ARKit morph targets
+document.getElementById('loadMsg').textContent = 'Loading 3D face with expressions...';
+
+loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb', function(gltf) {
+    headGroup = gltf.scene;
+    scene.add(headGroup);
+    
+    // Auto-frame face in view
+    const box = new THREE.Box3().setFromObject(headGroup);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    console.log('FaceCap size:', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
+    
+    headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
+    const maxDim = Math.max(size.x, size.y, size.z);
+    // Face fills most of the screen
+    camera.position.set(0, 0, maxDim * 1.1);
+    camera.lookAt(0, 0, 0);
+    controls.target.set(0, 0, 0);
+    controls.minDistance = maxDim * 0.5;
+    controls.maxDistance = maxDim * 4;
+    camera.near = 0.001;
+    camera.far = 100;
+    camera.updateProjectionMatrix();
+    
+    // Play animation if available
+    if (gltf.animations && gltf.animations.length > 0) {
+        var mixer = new THREE.AnimationMixer(headGroup);
+        var action = mixer.clipAction(gltf.animations[0]);
+        action.play();
+        // Store mixer for update loop
+        window._mixer = mixer;
+    }
+
+    // Find ALL meshes with morph targets
+    headGroup.traverse(function(child) {
+        if (child.isMesh) {
+            if (child.morphTargetInfluences && child.morphTargetDictionary) {
+                morphMesh = child;
+                morphDict = child.morphTargetDictionary;
+            }
+            if (child.material) {
+                child.material.roughness = 0.4;
+                child.material.metalness = 0.0;
+                child.material.envMapIntensity = 0.8;
+                if (!child.material.map) {
+                    child.material.color = new THREE.Color(0xf2c5a0);
+                }
+                child.material.needsUpdate = true;
+            }
+        }
+    });
+    
+    // === ADD REALISTIC DARK HAIR ===
+    const hairMat = new THREE.MeshStandardMaterial({color: 0x080605, roughness: 0.7, metalness: 0.05});
+    const hairGroup = new THREE.Group();
+    const hs = size; // use model size for scaling
+    
+    // Main hair volume (top)
+    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.3, 32, 32, 0, Math.PI*2, 0, Math.PI*0.55), hairMat);
+    hairTop.position.set(0, hs.y * 0.15, -hs.z * 0.03);
+    hairTop.scale.set(1.05, 0.9, 1.1);
+    hairGroup.add(hairTop);
+    
+    // Hair back (flows down neck)
+    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.28, 24, 24, 0, Math.PI*2, 0, Math.PI*0.7), hairMat);
+    hairBack.position.set(0, hs.y * 0.02, -hs.z * 0.1);
+    hairBack.scale.set(0.95, 1.2, 0.8);
+    hairGroup.add(hairBack);
+    
+    // Left side
+    const sideL = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.12, 16, 16), hairMat);
+    sideL.position.set(-hs.x * 0.28, -hs.y * 0.02, -hs.z * 0.02);
+    sideL.scale.set(0.5, 1.3, 0.7);
+    hairGroup.add(sideL);
+    
+    // Right side
+    const sideR = sideL.clone();
+    sideR.position.x = hs.x * 0.28;
+    hairGroup.add(sideR);
+    
+    // Bangs (front fringe)
+    const bangs = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.27, 24, 16, 0, Math.PI*2, 0, Math.PI*0.28), hairMat);
+    bangs.position.set(0, hs.y * 0.2, hs.z * 0.06);
+    bangs.scale.set(1.0, 0.5, 0.7);
+    hairGroup.add(bangs);
+    
+    // Long strands (back, flowing down)
+    for (var i = 0; i < 7; i++) {
+        var strand = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.04, hs.y * 0.3, 4, 8), hairMat);
+        var angle = (i / 7) * Math.PI * 0.8 - Math.PI * 0.4;
+        strand.position.set(Math.sin(angle) * hs.x * 0.22, -hs.y * 0.2, -hs.z * 0.12);
+        strand.rotation.z = angle * 0.2;
+        hairGroup.add(strand);
+    }
+    
+    headGroup.add(hairGroup);
+    
+    console.log('✅ Face loaded with hair! Morph targets:', Object.keys(morphDict).length);
+    if (Object.keys(morphDict).length > 0) {
+        console.log('Available:', Object.keys(morphDict).slice(0, 15).join(', '), '...');
+    }
+    document.getElementById('loadMsg').style.display = 'none';
+    document.getElementById('rT').textContent = '';
+    
+    // Connect WebSocket (session starts when person detected by camera)
+    setTimeout(function() { conn(); }, 300);
+    
+}, function(p) {
+    if (p.total > 0) {
+        var pct = Math.round(p.loaded / p.total * 100);
+        document.getElementById('loadMsg').textContent = 'Loading 3D avatar... ' + pct + '%';
+    }
+}, function(err) {
+    console.error('Model load error:', err);
+    document.getElementById('loadMsg').textContent = 'Model loaded with issues';
+    document.getElementById('rT').textContent = 'Click anywhere to start';
+});
+
+function setMorph(name, val) {
+    if (morphMesh && morphDict[name] !== undefined) {
+        morphMesh.morphTargetInfluences[morphDict[name]] = val;
+    }
+}
+
+// ===== ANIMATION =====
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = clock.getDelta();
+    const t = clock.elapsedTime;
+    
+    // Update controls (drag/zoom/pan)
+    controls.update();
+    
+    // Update animation mixer (plays idle animation)
+    if (window._mixer) window._mixer.update(delta);
+    
+    if (headGroup) {
+        // Subtle idle head movement
+        headGroup.rotation.y = Math.sin(t * 0.4) * 0.03;
+        headGroup.rotation.x = Math.sin(t * 0.5) * 0.015;
+    }
+    
+    // === FULL FACIAL EXPRESSIONS (all available morph targets) ===
+    
+    // JAW / MOUTH - realistic lip sync with varied shapes
+    setMorph('jawOpen', mouthVal * 0.75);
+    setMorph('jawForward', mouthVal * 0.1);
+    setMorph('jawLeft', Math.sin(t * 2.5) * 0.03 * mouthVal);
+    setMorph('jawRight', Math.cos(t * 2.5) * 0.03 * mouthVal);
+    setMorph('mouthOpen', mouthVal * 0.55);
+    setMorph('mouthClose', mouthVal < 0.1 ? 0.3 : 0);
+    setMorph('mouthFunnel', mouthVal > 0.5 ? mouthVal * 0.3 : 0);
+    setMorph('mouthPucker', mouthVal > 0.3 && mouthVal < 0.5 ? 0.25 : 0);
+    setMorph('mouthLeft', Math.sin(t * 3.2) * 0.06 * mouthVal);
+    setMorph('mouthRight', Math.cos(t * 3.2) * 0.06 * mouthVal);
+    setMorph('mouthRollUpper', mouthVal * 0.15);
+    setMorph('mouthRollLower', mouthVal * 0.2);
+    setMorph('mouthShrugUpper', mouthVal > 0.4 ? 0.2 : 0);
+    setMorph('mouthShrugLower', mouthVal > 0.4 ? 0.15 : 0);
+    setMorph('mouthStretch_L', mouthVal * 0.1);
+    setMorph('mouthStretch_R', mouthVal * 0.1);
+    setMorph('mouthDimple_L', mouthVal > 0.3 ? 0.15 : 0);
+    setMorph('mouthDimple_R', mouthVal > 0.3 ? 0.15 : 0);
+    setMorph('mouthUpperUp_L', mouthVal * 0.12);
+    setMorph('mouthUpperUp_R', mouthVal * 0.12);
+    setMorph('mouthLowerDown_L', mouthVal * 0.2);
+    setMorph('mouthLowerDown_R', mouthVal * 0.2);
+    setMorph('mouthPress_L', mouthVal < 0.1 ? 0.1 : 0);
+    setMorph('mouthPress_R', mouthVal < 0.1 ? 0.1 : 0);
+    
+    // SMILE (natural when idle, reduced when speaking)
+    const smileAmt = mouthVal < 0.05 ? 0.3 : 0.05;
+    setMorph('mouthSmile_L', smileAmt);
+    setMorph('mouthSmile_R', smileAmt);
+    setMorph('mouthSmileLeft', smileAmt);
+    setMorph('mouthSmileRight', smileAmt);
+    setMorph('mouthFrown_L', 0);
+    setMorph('mouthFrown_R', 0);
+    
+    // EYES - blink
+    setMorph('eyeBlink_L', blinkVal);
+    setMorph('eyeBlink_R', blinkVal);
+    setMorph('eyeBlinkLeft', blinkVal);
+    setMorph('eyeBlinkRight', blinkVal);
+    
+    // EYES - wide open when speaking expressively
+    setMorph('eyeWide_L', mouthVal > 0.5 ? 0.2 : 0);
+    setMorph('eyeWide_R', mouthVal > 0.5 ? 0.2 : 0);
+    setMorph('eyeWideLeft', mouthVal > 0.5 ? 0.2 : 0);
+    setMorph('eyeWideRight', mouthVal > 0.5 ? 0.2 : 0);
+    
+    // EYES - squint slightly with smile
+    setMorph('eyeSquint_L', smileAmt * 0.4);
+    setMorph('eyeSquint_R', smileAmt * 0.4);
+    setMorph('eyeSquintLeft', smileAmt * 0.4);
+    setMorph('eyeSquintRight', smileAmt * 0.4);
+    
+    // EYE GAZE - natural movement (looks around subtly)
+    setMorph('eyeLookUp_L', Math.max(0, Math.sin(t * 0.6) * 0.15));
+    setMorph('eyeLookUp_R', Math.max(0, Math.sin(t * 0.6) * 0.15));
+    setMorph('eyeLookDown_L', Math.max(0, -Math.sin(t * 0.6) * 0.15));
+    setMorph('eyeLookDown_R', Math.max(0, -Math.sin(t * 0.6) * 0.15));
+    setMorph('eyeLookIn_L', Math.max(0, Math.sin(t * 0.4) * 0.1));
+    setMorph('eyeLookOut_L', Math.max(0, -Math.sin(t * 0.4) * 0.1));
+    setMorph('eyeLookIn_R', Math.max(0, -Math.sin(t * 0.4) * 0.1));
+    setMorph('eyeLookOut_R', Math.max(0, Math.sin(t * 0.4) * 0.1));
+    
+    // EYEBROWS - expressive during speech
+    setMorph('browInnerUp', mouthVal > 0.3 ? 0.4 : 0.08);
+    setMorph('browOuterUp_L', mouthVal > 0.4 ? 0.3 : 0.02);
+    setMorph('browOuterUp_R', mouthVal > 0.4 ? 0.3 : 0.02);
+    setMorph('browDown_L', mouthVal > 0.6 ? 0.15 : 0);
+    setMorph('browDown_R', mouthVal > 0.6 ? 0.15 : 0);
+    
+    // CHEEKS
+    setMorph('cheekPuff', mouthVal > 0.5 ? 0.2 : 0);
+    setMorph('cheekSquint_L', smileAmt * 0.6);
+    setMorph('cheekSquint_R', smileAmt * 0.6);
+    
+    // NOSE
+    setMorph('noseSneer_L', mouthVal > 0.5 ? 0.2 : 0);
+    setMorph('noseSneer_R', mouthVal > 0.5 ? 0.2 : 0);
+    
+    // TONGUE (if available)
+    setMorph('tongueOut', mouthVal > 0.7 ? 0.05 : 0);
+    
+    renderer.render(scene, camera);
+}
+animate();
+
+// Blink
+function doBlink() { blinkVal = 1; setTimeout(() => blinkVal = 0, 130); setTimeout(doBlink, 2500 + Math.random() * 4000); }
+setTimeout(doBlink, 1500);
+
+// Mouse tracking disabled (using OrbitControls instead)
+
+// Speaking mouth - more varied like real speech
+let spkI = null;
+function startMouth() { 
+    spkI = setInterval(() => { 
+        // Vary between different mouth shapes (vowels, consonants)
+        const r = Math.random();
+        if (r < 0.3) mouthVal = 0.6 + Math.random() * 0.4; // wide open (A, O)
+        else if (r < 0.6) mouthVal = 0.2 + Math.random() * 0.3; // medium (E, I)
+        else mouthVal = 0.05 + Math.random() * 0.15; // closed (M, P, B)
+    }, 80); 
+}
+function stopMouth() { if (spkI) { clearInterval(spkI); spkI = null; } mouthVal = 0; }
+
+// ===== STATE / TTS / MIC / WS (same as before) =====
+function setS(s){document.getElementById('stl').className='stl '+s;document.getElementById('wf').className='wf'+(s==='speaking'?' on':'');if(s==='speaking'){document.getElementById('stl').textContent='● Speaking';startMouth();document.getElementById('dM').className='cd y';document.getElementById('lM').textContent='Out';}else if(s==='listening'){document.getElementById('stl').textContent='● Listening';stopMouth();document.getElementById('dM').className='cd g';document.getElementById('lM').textContent='On';}else if(s==='thinking'){document.getElementById('stl').textContent='● Processing';stopMouth();document.getElementById('dM').className='cd y';document.getElementById('lM').textContent='...';}else{document.getElementById('stl').textContent='Ready';stopMouth();}}
+
+let speaking=false;
+function say(t){
+    if(!t) return;
+    // Stop any current speech cleanly
+    speechSynthesis.cancel();
+    stopMouth(); // Ensure mouth stops
+    
+    speaking=true; stopRec(); setS('speaking');
+    document.getElementById('rT').textContent=t;
+    addTx('a',t);
+    
+    // Wait for voices to load
+    let voices = speechSynthesis.getVoices();
+    
+    const u = new SpeechSynthesisUtterance(t);
+    u.lang = 'en-US';
+    u.rate = 0.95;
+    u.pitch = 0.8; // male deep voice
+    u.volume = 1.0;
+    
+    // Select male voice
+    if(voices.length > 0) {
+        const male = voices.find(x=>x.name.includes('David'))
+            || voices.find(x=>x.name.includes('Male'))
+            || voices.find(x=>x.name.includes('Mark'))
+            || voices.find(x=>x.name.includes('James'))
+            || voices.find(x=>x.name.includes('Google UK English Male'))
+            || voices.find(x=>x.lang==='en-US' && x.name.includes('English'))
+            || voices.find(x=>x.lang.startsWith('en'));
+        if(male) u.voice = male;
+    }
+    
+    u.onend = function() { 
+        speaking=false; 
+        setS('listening'); 
+        // Only start mic if person is still present
+        if(personPresent) startRec(); 
+    };
+    u.onerror = function() { 
+        speaking=false; 
+        setS('listening'); 
+        if(personPresent) startRec(); 
+    };
+    
+    speechSynthesis.speak(u);
+}
+
+let listening=false,rec;
+function startRec(){if(listening||speaking)return;const S=window.SpeechRecognition||window.webkitSpeechRecognition;if(!S)return;rec=new S();rec.lang='en-IN';rec.continuous=true;rec.interimResults=true;rec.onresult=e=>{let i='';for(let x=e.resultIndex;x<e.results.length;x++){if(e.results[x].isFinal){const t=e.results[x][0].transcript.trim();if(t&&sid){hLive();addTx('u',t);setS('thinking');document.getElementById('rT').textContent='';send({type:'speech',text:t,is_final:true});}}else i+=e.results[x][0].transcript;}if(i)sLive(i);};rec.onerror=e=>{if(e.error!=='no-speech'&&e.error!=='aborted')stopRec();};rec.onend=()=>{if(listening&&!speaking)try{rec.start();}catch(x){listening=false;}};try{rec.start();listening=true;}catch(x){}}
+function stopRec(){listening=false;if(rec){try{rec.stop();}catch(x){}rec=null;}hLive();}
+function sLive(t){const e=document.getElementById('livs');e.style.display='block';e.textContent=t;}
+function hLive(){document.getElementById('livs').style.display='none';}
+function addTx(r,t){const l=document.getElementById('tl'),tm=new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});l.innerHTML+=`<div class="te"><div class="teh"><span class="ter ${r}">${r==='a'?'AI':'Visitor'}</span><span class="tet">${tm}</span></div><div class="teb">${t}</div></div>`;setTimeout(()=>{l.scrollTop=l.scrollHeight;},50);}
+
+const WS='ws://'+location.host,CID='r_'+Date.now();let ws,sid;
+function conn(){try{ws=new WebSocket(WS+'/ws/conversation/'+CID);}catch(x){setTimeout(conn,5000);return;}ws.onopen=()=>{document.getElementById('dC').className='cd g';document.getElementById('lC').textContent='On';};ws.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='response'&&d.text){if(d.session_id)sid=d.session_id;if(d.visitor_name){
+    document.getElementById('vc').style.display='block';
+    document.getElementById('vn').textContent=d.visitor_name;
+    // REGISTER FACE as soon as we know the name!
+    if(!window._faceRegistered){
+        window._faceRegistered = true;
+        registerFaceNow(d.visitor_name);
+    }
+}say(d.text);}else if(d.type==='register_face'&&d.name){registerFaceNow(d.name);}};ws.onclose=()=>{document.getElementById('dC').className='cd r';document.getElementById('lC').textContent='Off';ws=null;setTimeout(conn,5000);};ws.onerror=()=>{};}
+
+function registerFaceNow(name){
+    // Capture current camera frame and register face
+    const v = document.getElementById('vid');
+    if(!v || !v.videoWidth){
+        console.log('⚠️ Cannot register face: camera not ready');
+        // Retry in 1 second
+        setTimeout(function(){ registerFaceNow(name); }, 1000);
+        return;
+    }
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 240;
+    c.getContext('2d').drawImage(v, 0, 0, 320, 240);
+    const imageData = c.toDataURL('image/jpeg', 0.8).split(',')[1];
+    
+    console.log('📸 Registering face for:', name, 'image size:', imageData.length);
+    
+    fetch('/api/face/register?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({image: imageData})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        if(data.success){
+            console.log('✅ FACE REGISTERED for:', name);
+        } else {
+            console.log('❌ Face register FAILED:', data.error);
+            // Retry once more
+            setTimeout(function(){ registerFaceNow(name); }, 2000);
+        }
+    })
+    .catch(function(e){ 
+        console.log('❌ Face register network error:', e);
+    });
+}
+function send(d){if(ws&&ws.readyState===1)ws.send(JSON.stringify(d));}
+
+// ===== FULLY AUTOMATIC PERSON DETECTION =====
+let cam, camI, personPresent = false, personGoneCount = 0;
+let sessionActive = false, systemReady = false;
+
+// Start camera immediately (no button needed)
+async function startSystem(){
+    try{
+        cam = await navigator.mediaDevices.getUserMedia({video:{width:320,height:240}});
+        document.getElementById('vid').srcObject = cam;
+        document.getElementById('vid').style.display = 'block';
+        document.getElementById('lbx').style.display = 'inline';
+        systemReady = true;
+        console.log('📷 Camera active. Face recognition ready.');
+        document.getElementById('rT').textContent = '';
+        // Check for person every 500ms (very fast)
+        camI = setInterval(detectPerson, 500);
+    } catch(x){
+        console.error('Camera failed:', x);
+        document.getElementById('rT').textContent = '';
+        // If camera fails, start session anyway (person is there)
+        if(!sessionActive && ws && ws.readyState === 1 && !sid){
+            sessionActive = true;
+            personPresent = true;
+            send({type: 'start_session', match_status: 'no_match'});
+            setS('thinking');
+        }
+    }
+}
+
+function detectPerson(){
+    const v = document.getElementById('vid');
+    if(!v.videoWidth || !systemReady) return;
+    
+    // Don't keep identifying if session is already active
+    if(sessionActive) {
+        // Just check if face is still there (simple check)
+        const c = document.createElement('canvas');
+        c.width = 160; c.height = 120;
+        c.getContext('2d').drawImage(v, 0, 0, 160, 120);
+        const imgData = c.getContext('2d').getImageData(0, 0, 160, 120);
+        let detail = 0;
+        for(let i = 0; i < imgData.data.length - 4; i += 16){ detail += Math.abs(imgData.data[i] - imgData.data[i+4]); }
+        detail = detail / (imgData.data.length / 16);
+        if(detail < 3){
+            personGoneCount++;
+            if(personGoneCount > 10 && !speaking && !listening){
+                personPresent = false;
+                sessionActive = false;
+                window._faceRegistered = false;
+                console.log('👤 Person LEFT.');
+                document.getElementById('rT').textContent = '';
+                setS('');
+                stopRec();
+                speechSynthesis.cancel();
+                speaking = false;
+                if(sid){ send({type: 'end_session', session_id: sid}); sid = null; }
+            }
+        } else {
+            personGoneCount = 0;
+        }
+        return;
+    }
+    
+    // Session not active - identify face
+    if(window._identifying) return; // Prevent overlapping calls
+    window._identifying = true;
+    
+    const c = document.createElement('canvas');
+    c.width = 320; c.height = 240;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(v, 0, 0, 320, 240);
+    const imageData = c.toDataURL('image/jpeg', 0.7).split(',')[1];
+    
+    fetch('/api/face/identify', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({image: imageData})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        window._identifying = false;
+        if(sessionActive) return; // Double-check: session may have started while waiting
+        if(data.found && data.name){
+            // KNOWN FACE!
+            personPresent = true;
+            sessionActive = true;
+            personGoneCount = 0;
+            console.log('🔄 RECOGNIZED:', data.name, 'confidence:', data.confidence);
+            if(ws && ws.readyState === 1){
+                send({type: 'start_session', match_status: 'match_found', person_name: data.name, visit_count: data.visit_count || 1});
+                setS('thinking');
+            }
+        } else if(!data.no_face && !data.found){
+            // NEW FACE
+            personPresent = true;
+            sessionActive = true;
+            personGoneCount = 0;
+            console.log('👤 NEW FACE - asking name');
+            window._lastFaceImage = imageData;
+            if(ws && ws.readyState === 1){
+                send({type: 'start_session', match_status: 'no_match'});
+                setS('thinking');
+            }
+        }
+        // If no_face, do nothing (waiting for person)
+    })
+    .catch(function(){ window._identifying = false; });
+}
+
+// ===== FULLY AUTOMATIC SYSTEM - NO HUMAN INTERACTION NEEDED =====
+speechSynthesis.getVoices();
+if(window.speechSynthesis.onvoiceschanged !== undefined){
+    window.speechSynthesis.onvoiceschanged = ()=> speechSynthesis.getVoices();
+}
+
+// Connect WebSocket immediately
+conn();
+
+// Auto-activate on ANY user interaction (mousemove, keydown, touch, click)
+let activated = false;
+function activate(){
+    if(activated) return;
+    activated = true;
+    // Enable audio
+    const w = new SpeechSynthesisUtterance('');
+    speechSynthesis.speak(w);
+    // Start camera + detection
+    startSystem();
+    // Remove all listeners
+    document.removeEventListener('click', activate);
+    document.removeEventListener('mousemove', activate);
+    document.removeEventListener('keydown', activate);
+    document.removeEventListener('touchstart', activate);
+}
+document.addEventListener('click', activate);
+document.addEventListener('mousemove', activate);
+document.addEventListener('keydown', activate);
+document.addEventListener('touchstart', activate);
+
+// Keepalive
+setInterval(()=>{if(ws&&ws.readyState===1)send({type:'ping'});},25000);
+</script>
+</body>
+</html>
