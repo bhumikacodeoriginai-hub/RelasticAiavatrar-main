@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     transcribe_language_code: str = "en-IN"
 
     # Database (MySQL - localhost)
-    database_url: str = "mysql+asyncmy://appuser:StrongPassword%40123@localhost:3306/myapp"
+    database_url: str = "mysql+aiomysql://appuser:StrongPassword%40123@localhost:3306/myapp"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
