@@ -227,7 +227,7 @@ class ConversationManager:
             # Use the reliable DB helper functions directly
             from database.database import save_visitor_to_db, log_visit_to_db, AsyncSessionLocal
 
-            # CHECK DATABASE: Is this a returning visitor?
+            # CHECK DATABASE: Is this a returning visitor? (with fast timeout)
             is_returning = False
             visit_count = 0
             try:
@@ -250,7 +250,7 @@ class ConversationManager:
                             await db.commit()
                             logger.info("✅ Returning visitor updated", name=extracted_name, visits=visit_count)
             except Exception as e:
-                logger.error("DB lookup failed", error=str(e))
+                logger.warning("DB lookup skipped (will save as new)", error=str(e)[:80])
 
             if is_returning:
                 session.state = ConversationState.ACTIVE_CONVERSATION
@@ -261,13 +261,20 @@ class ConversationManager:
                 session.add_message("assistant", response)
                 return response
 
-            # NEW VISITOR - Save directly to DB
-            saved = await save_visitor_to_db(name=extracted_name)
-            if saved:
-                await log_visit_to_db(visitor_name=extracted_name, purpose="Walk-in")
-                logger.info("✅ New visitor + visit saved", name=extracted_name)
-            else:
-                logger.error("❌ Failed to save new visitor!", name=extracted_name)
+            # NEW VISITOR - Save directly to DB (non-blocking background task)
+            import asyncio
+            async def _bg_save_visitor():
+                try:
+                    saved = await save_visitor_to_db(name=extracted_name)
+                    if saved:
+                        await log_visit_to_db(visitor_name=extracted_name, purpose="Walk-in")
+                        logger.info("✅ New visitor + visit saved", name=extracted_name)
+                    else:
+                        logger.error("❌ Failed to save new visitor!", name=extracted_name)
+                except Exception as e:
+                    logger.error("Background save failed", name=extracted_name, error=str(e))
+
+            asyncio.create_task(_bg_save_visitor())
 
             # Go straight to active conversation
             session.state = ConversationState.ACTIVE_CONVERSATION

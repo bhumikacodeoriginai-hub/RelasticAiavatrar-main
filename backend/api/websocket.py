@@ -211,26 +211,7 @@ async def handle_speech(
         logger.error("Bedrock/AI error", error=str(e))
         response_text = f"I heard you say: '{text}'. I'm having trouble connecting right now, but I'm here to help!"
 
-    # Save conversation to MySQL using reliable helpers
-    try:
-        from database.database import save_visitor_to_db, save_conversation_to_db, log_visit_to_db
-
-        session = conv_manager.get_session(session_id)
-        if session and session.visitor_context.name:
-            visitor_name = session.visitor_context.name
-
-            # Ensure visitor exists in DB (idempotent - won't duplicate)
-            await save_visitor_to_db(name=visitor_name)
-
-            # Save both sides of the conversation
-            await save_conversation_to_db(visitor_name=visitor_name, role='visitor', message=text)
-            await save_conversation_to_db(visitor_name=visitor_name, role='ai', message=response_text)
-
-            logger.info("✅ Conversation saved to DB", visitor=visitor_name)
-    except Exception as e:
-        logger.warning("DB conversation save failed", error=str(e))
-
-    # Generate audio (non-critical)
+    # Generate audio FIRST (before DB saves - so response is immediate)
     audio_base64 = None
     try:
         if response_text and tts._initialized:
@@ -244,7 +225,7 @@ async def handle_speech(
     session = conv_manager.get_session(session_id)
     state = session.state.value if session else "ended"
 
-    # Send response
+    # Send response IMMEDIATELY to user (no waiting for DB)
     await ws_manager.send_to_client(client_id, {
         "type": "response",
         "text": response_text,
@@ -253,6 +234,27 @@ async def handle_speech(
         "session_id": session_id,
         "visitor_name": session.visitor_context.name if session else None
     })
+
+    # Save conversation to MySQL in background (non-blocking)
+    try:
+        from database.database import save_visitor_to_db, save_conversation_to_db
+
+        if session and session.visitor_context.name:
+            visitor_name = session.visitor_context.name
+
+            # Fire-and-forget: save in background task
+            async def _bg_save():
+                try:
+                    await save_visitor_to_db(name=visitor_name)
+                    await save_conversation_to_db(visitor_name=visitor_name, role='visitor', message=text)
+                    await save_conversation_to_db(visitor_name=visitor_name, role='ai', message=response_text)
+                    logger.info("✅ Conversation saved to DB", visitor=visitor_name)
+                except Exception as e:
+                    logger.warning("DB background save failed", error=str(e))
+
+            asyncio.create_task(_bg_save())
+    except Exception as e:
+        logger.warning("DB save setup failed", error=str(e))
 
 
 async def handle_start_session(

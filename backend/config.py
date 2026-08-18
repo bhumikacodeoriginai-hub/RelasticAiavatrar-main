@@ -36,8 +36,8 @@ class Settings(BaseSettings):
     # AWS Transcribe
     transcribe_language_code: str = "en-IN"
 
-    # Database (MySQL - localhost)
-    database_url: str = "mysql+aiomysql://appuser:StrongPassword%40123@127.0.0.1:3306/myapp"
+    # Database (MySQL on AWS EC2)
+    database_url: str = "mysql+aiomysql://appuser:StrongPassword%40123@13.201.70.108:3306/myapp"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

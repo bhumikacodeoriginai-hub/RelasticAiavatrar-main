@@ -1,9 +1,10 @@
 """
-Database connection - MySQL on localhost.
-Uses asyncmy driver for async MySQL access.
+Database connection - MySQL on AWS EC2.
+Uses aiomysql driver for async MySQL access.
 Server starts even if DB connection fails (graceful degradation).
 """
 
+import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import text
@@ -27,9 +28,10 @@ try:
         echo=False,
         pool_size=5,
         max_overflow=3,
-        pool_timeout=10,
+        pool_timeout=5,
         pool_recycle=1800,
         pool_pre_ping=True,
+        connect_args={"connect_timeout": 3},
     )
     AsyncSessionLocal = async_sessionmaker(
         engine,
