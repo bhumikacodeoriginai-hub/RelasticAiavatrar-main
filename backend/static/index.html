@@ -114,114 +114,68 @@ let mouthVal = 0, blinkVal = 0, headRY = 0, headRX = 0;
 
 const loader = new GLTFLoader();
 
-// KTX2 + Meshopt decoders (required for FaceCap model)
-const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
-ktx2Loader.detectSupport(renderer);
-loader.setKTX2Loader(ktx2Loader);
-loader.setMeshoptDecoder(MeshoptDecoder);
+// Load Angelica avatar from local static folder
+document.getElementById('loadMsg').textContent = 'Loading 3D avatar...';
 
-// Load FaceCap - realistic 3D face with 52 ARKit morph targets
-document.getElementById('loadMsg').textContent = 'Loading 3D face with expressions...';
-
-loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb', function(gltf) {
+loader.load('/static/angelica%20(1).glb', function(gltf) {
     headGroup = gltf.scene;
     scene.add(headGroup);
     
-    // Auto-frame face in view
+    // Auto-frame avatar in view
     const box = new THREE.Box3().setFromObject(headGroup);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
-    console.log('FaceCap size:', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
+    console.log('Angelica size:', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
     
+    // Position avatar centered, slight offset up for face focus
     headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
     const maxDim = Math.max(size.x, size.y, size.z);
-    // Face fills most of the screen
-    camera.position.set(0, 0, maxDim * 1.1);
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    controls.minDistance = maxDim * 0.5;
-    controls.maxDistance = maxDim * 4;
-    camera.near = 0.001;
-    camera.far = 100;
+    // Frame the upper body/face nicely
+    camera.position.set(0, size.y * 0.15, maxDim * 0.8);
+    camera.lookAt(0, size.y * 0.1, 0);
+    controls.target.set(0, size.y * 0.1, 0);
+    controls.minDistance = maxDim * 0.3;
+    controls.maxDistance = maxDim * 3;
+    camera.near = 0.01;
+    camera.far = 500;
     camera.updateProjectionMatrix();
     
-    // Play animation if available
+    // Play animation if available (idle breathing, etc.)
     if (gltf.animations && gltf.animations.length > 0) {
         var mixer = new THREE.AnimationMixer(headGroup);
-        var action = mixer.clipAction(gltf.animations[0]);
-        action.play();
-        // Store mixer for update loop
+        gltf.animations.forEach(function(clip) {
+            var action = mixer.clipAction(clip);
+            action.play();
+        });
         window._mixer = mixer;
     }
 
-    // Find ALL meshes with morph targets
+    // Find ALL meshes with morph targets (52 ARKit blendshapes)
     headGroup.traverse(function(child) {
         if (child.isMesh) {
             if (child.morphTargetInfluences && child.morphTargetDictionary) {
-                morphMesh = child;
-                morphDict = child.morphTargetDictionary;
+                if (!morphMesh || Object.keys(child.morphTargetDictionary).length > Object.keys(morphDict).length) {
+                    morphMesh = child;
+                    morphDict = child.morphTargetDictionary;
+                }
             }
+            // Enhance materials for realistic skin
             if (child.material) {
-                child.material.roughness = 0.4;
-                child.material.metalness = 0.0;
-                child.material.envMapIntensity = 0.8;
-                if (!child.material.map) {
-                    child.material.color = new THREE.Color(0xf2c5a0);
+                if (child.material.map) {
+                    child.material.roughness = Math.min(child.material.roughness || 0.5, 0.6);
+                    child.material.metalness = 0.0;
+                    child.material.envMapIntensity = 0.6;
                 }
                 child.material.needsUpdate = true;
+                child.castShadow = true;
+                child.receiveShadow = true;
             }
         }
     });
     
-    // === ADD REALISTIC DARK HAIR ===
-    const hairMat = new THREE.MeshStandardMaterial({color: 0x080605, roughness: 0.7, metalness: 0.05});
-    const hairGroup = new THREE.Group();
-    const hs = size; // use model size for scaling
-    
-    // Main hair volume (top)
-    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.3, 32, 32, 0, Math.PI*2, 0, Math.PI*0.55), hairMat);
-    hairTop.position.set(0, hs.y * 0.15, -hs.z * 0.03);
-    hairTop.scale.set(1.05, 0.9, 1.1);
-    hairGroup.add(hairTop);
-    
-    // Hair back (flows down neck)
-    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.28, 24, 24, 0, Math.PI*2, 0, Math.PI*0.7), hairMat);
-    hairBack.position.set(0, hs.y * 0.02, -hs.z * 0.1);
-    hairBack.scale.set(0.95, 1.2, 0.8);
-    hairGroup.add(hairBack);
-    
-    // Left side
-    const sideL = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.12, 16, 16), hairMat);
-    sideL.position.set(-hs.x * 0.28, -hs.y * 0.02, -hs.z * 0.02);
-    sideL.scale.set(0.5, 1.3, 0.7);
-    hairGroup.add(sideL);
-    
-    // Right side
-    const sideR = sideL.clone();
-    sideR.position.x = hs.x * 0.28;
-    hairGroup.add(sideR);
-    
-    // Bangs (front fringe)
-    const bangs = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.27, 24, 16, 0, Math.PI*2, 0, Math.PI*0.28), hairMat);
-    bangs.position.set(0, hs.y * 0.2, hs.z * 0.06);
-    bangs.scale.set(1.0, 0.5, 0.7);
-    hairGroup.add(bangs);
-    
-    // Long strands (back, flowing down)
-    for (var i = 0; i < 7; i++) {
-        var strand = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.04, hs.y * 0.3, 4, 8), hairMat);
-        var angle = (i / 7) * Math.PI * 0.8 - Math.PI * 0.4;
-        strand.position.set(Math.sin(angle) * hs.x * 0.22, -hs.y * 0.2, -hs.z * 0.12);
-        strand.rotation.z = angle * 0.2;
-        hairGroup.add(strand);
-    }
-    
-    headGroup.add(hairGroup);
-    
-    console.log('✅ Face loaded with hair! Morph targets:', Object.keys(morphDict).length);
+    console.log('✅ Angelica avatar loaded! Morph targets:', Object.keys(morphDict).length);
     if (Object.keys(morphDict).length > 0) {
-        console.log('Available:', Object.keys(morphDict).slice(0, 15).join(', '), '...');
+        console.log('Available blendshapes:', Object.keys(morphDict).join(', '));
     }
     document.getElementById('loadMsg').style.display = 'none';
     document.getElementById('rT').textContent = '';
@@ -232,11 +186,11 @@ loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gl
 }, function(p) {
     if (p.total > 0) {
         var pct = Math.round(p.loaded / p.total * 100);
-        document.getElementById('loadMsg').textContent = 'Loading 3D avatar... ' + pct + '%';
+        document.getElementById('loadMsg').textContent = 'Loading avatar... ' + pct + '%';
     }
 }, function(err) {
     console.error('Model load error:', err);
-    document.getElementById('loadMsg').textContent = 'Model loaded with issues';
+    document.getElementById('loadMsg').textContent = 'Avatar loaded with issues';
     document.getElementById('rT').textContent = 'Click anywhere to start';
 });
 
@@ -389,21 +343,24 @@ function say(t){
     let voices = speechSynthesis.getVoices();
     
     const u = new SpeechSynthesisUtterance(t);
-    u.lang = 'en-US';
+    u.lang = 'en-IN';
     u.rate = 0.95;
-    u.pitch = 0.8; // male deep voice
+    u.pitch = 1.1; // female voice pitch
     u.volume = 1.0;
     
-    // Select male voice
+    // Select female voice (Indian English preferred)
     if(voices.length > 0) {
-        const male = voices.find(x=>x.name.includes('David'))
-            || voices.find(x=>x.name.includes('Male'))
-            || voices.find(x=>x.name.includes('Mark'))
-            || voices.find(x=>x.name.includes('James'))
-            || voices.find(x=>x.name.includes('Google UK English Male'))
-            || voices.find(x=>x.lang==='en-US' && x.name.includes('English'))
+        const female = voices.find(x=>x.name.includes('Heera') && x.lang.includes('en'))
+            || voices.find(x=>x.name.includes('Google हिन्दी'))
+            || voices.find(x=>x.name.includes('Zira'))
+            || voices.find(x=>x.name.includes('Female') && x.lang.startsWith('en'))
+            || voices.find(x=>x.name.includes('Samantha'))
+            || voices.find(x=>x.name.includes('Google UK English Female'))
+            || voices.find(x=>x.name.includes('Google US English') && !x.name.includes('Male'))
+            || voices.find(x=>x.lang==='en-IN')
+            || voices.find(x=>x.lang.startsWith('en') && x.name.toLowerCase().includes('female'))
             || voices.find(x=>x.lang.startsWith('en'));
-        if(male) u.voice = male;
+        if(female) u.voice = female;
     }
     
     u.onend = function() { 

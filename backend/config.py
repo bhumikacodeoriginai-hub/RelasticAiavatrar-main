@@ -28,9 +28,9 @@ class Settings(BaseSettings):
     bedrock_temperature: float = 0.5
     bedrock_top_p: float = 0.9
 
-    # AWS Polly (Aditi only supports "standard" engine, not "neural")
-    polly_voice_id: str = "Aditi"
-    polly_engine: str = "standard"
+    # AWS Polly (Kajal = Indian English female, supports neural engine)
+    polly_voice_id: str = "Kajal"
+    polly_engine: str = "neural"
     polly_language_code: str = "en-IN"
 
     # AWS Transcribe
