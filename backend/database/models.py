@@ -1,6 +1,6 @@
 """
 SQLAlchemy ORM models for the AI Receptionist application.
-Supports both SQLite (development) and PostgreSQL+pgvector (production).
+MySQL-compatible models using JSON for embeddings.
 """
 
 import uuid

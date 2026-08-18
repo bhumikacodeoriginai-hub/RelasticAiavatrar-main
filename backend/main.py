@@ -275,13 +275,13 @@ async def health_check():
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("SELECT 1"))
                 services["mysql"] = "connected"
-                result = await session.execute(text("SELECT COUNT(*) FROM visitor"))
+                result = await session.execute(text("SELECT COUNT(*) as cnt FROM visitor"))
                 count = result.scalar()
                 services["visitors_count"] = count
         else:
             services["mysql"] = "not configured"
     except Exception as e:
-        services["mysql"] = f"FAILED: {str(e)}"
+        services["mysql"] = f"error: {str(e)}"
 
     if hasattr(app.state, 'bedrock_client'):
         services["bedrock"] = "initialized" if app.state.bedrock_client._initialized else "not_initialized"
