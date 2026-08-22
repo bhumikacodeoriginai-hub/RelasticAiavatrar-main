@@ -483,27 +483,35 @@ function didBadge(msg, color){
         b.style.color = color || '#6ee7b7';
     } catch(e){}
 }
-// Idle still image of the real-human face, shown when D-ID is enabled so the
-// 3D "doll" is never displayed. Defaults to the D-ID presenter image; if a
-// custom DID_SOURCE_URL is set, that image is used instead.
-const DID_DEFAULT_IDLE = 'https://create-images-results.d-id.com/DefaultPresenters/Amy_f/image.jpeg';
-let DID_IDLE_IMG = DID_DEFAULT_IDLE;
+// Idle still image of the face, shown when D-ID is enabled. Default to the
+// LOCALLY-served image (reachable even when external hosts are blocked on this
+// machine). Falls back gracefully to the 3D avatar if it can't load.
+let DID_IDLE_IMG = '/static/receptionist.jpeg';
 
 function showDIDIdle(){
-    // Hide the 3D canvas, show a still real-human image so the face is present
-    // immediately and between turns (no 3D doll, no blank screen).
+    // Show a still real-human idle image. IMPORTANT: only hide the 3D canvas
+    // AFTER the image successfully loads, so a blocked/unreachable image never
+    // leaves a blank screen (your machine can't reach external image hosts).
     try {
-        document.getElementById('c3d').style.display = 'none';
-        document.getElementById('loadMsg').style.display = 'none';
         var img = document.getElementById('didIdle');
         if (!img) {
             img = document.createElement('img');
             img.id = 'didIdle';
-            img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:5;background:#000';
+            img.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:5;background:#000;display:none';
             document.querySelector('.av-wrap').appendChild(img);
         }
+        img.onload = function(){
+            // Image is here -> now it's safe to hide the 3D canvas.
+            img.style.display = 'block';
+            var c = document.getElementById('c3d'); if (c) c.style.display = 'none';
+            var lm = document.getElementById('loadMsg'); if (lm) lm.style.display = 'none';
+        };
+        img.onerror = function(){
+            // Idle image unreachable -> keep the 3D avatar visible (no blank).
+            console.warn('D-ID idle image failed to load:', img.src, '- keeping 3D avatar');
+            img.style.display = 'none';
+        };
         img.src = DID_IDLE_IMG;
-        img.style.display = 'block';
     } catch(e){}
 }
 
@@ -511,7 +519,8 @@ fetch('/api/did/status').then(r=>r.json()).then(d=>{
     DID_ENABLED = !!(d && d.enabled);
     console.log('D-ID status:', d);
     if (DID_ENABLED) {
-        // Use the configured custom face as the idle image if provided.
+        // Prefer a custom source image if it is a LOCAL /static path (reachable
+        // even when external hosts are blocked). Otherwise use it as given.
         if (d.has_source && d.source_url && d.source_url.indexOf('http') === 0) {
             DID_IDLE_IMG = d.source_url;
         }
@@ -556,20 +565,32 @@ function sayWithDID(t){
     .then(function(data){
         if (data && data.success && data.video_url) {
             const vid = document.getElementById('didVid');
+            var fellBack = false;
+            function fallback3D(){
+                if (fellBack) return; fellBack = true;
+                clearTimeout(startGuard);
+                vid.classList.remove('on');
+                showDIDIdle();
+                sayWith3D(t);
+            }
+            // If the video can't even start playing within 6s (e.g. the D-ID
+            // video host is unreachable from this machine), fall back to 3D so
+            // the receptionist still speaks.
+            var startGuard = setTimeout(fallback3D, 6000);
+
+            vid.onloadeddata = function(){ clearTimeout(startGuard); };
             vid.src = data.video_url;
             vid.classList.add('on');   // video sits above the idle image (z-index)
             vid.muted = false;
             vid.play().then(function(){
-                // Real human video is playing (own audio + lip-sync).
+                clearTimeout(startGuard); // real human video is playing
             }).catch(function(){
-                // Autoplay with sound blocked -> fall back to 3D voice.
-                vid.classList.remove('on');
-                sayWith3D(t);
+                fallback3D();
             });
-            // When the reply finishes, hide the video and show the idle
-            // real-human still image again (never revert to the 3D avatar).
+            // When the reply finishes, hide the video and show the idle image
+            // again (never revert to the 3D doll if D-ID is working).
             vid.onended = function(){ vid.classList.remove('on'); showDIDIdle(); finishSpeaking(); };
-            vid.onerror = function(){ vid.classList.remove('on'); showDIDIdle(); sayWith3D(t); };
+            vid.onerror = function(){ fallback3D(); };
         } else {
             // D-ID failed to generate -> show reason + fall back to 3D avatar.
             console.warn('D-ID speak failed:', data && data.reason);
