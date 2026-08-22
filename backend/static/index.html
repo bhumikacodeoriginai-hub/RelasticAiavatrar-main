@@ -302,28 +302,33 @@ function loadFacecap() {
         });
 }
 
-// Load order: local /static/avatar_head.glb  ->  RPM CDN  ->  facecap.
+// Optional: try the RPM CDN head (only used if explicitly enabled). Off by
+// default because this machine can't reach external hosts, which produced
+// noisy ERR_NAME_NOT_RESOLVED console errors on every load.
+const TRY_RPM_CDN = false;
 function loadRPM() {
     document.getElementById('loadMsg').textContent = 'Loading realistic 3D head...';
     loader.load(RPM_URL, function(gltf){ onModelLoaded(gltf, 'rpm'); },
         function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading realistic head... ' + Math.round(p.loaded/p.total*100) + '%'; },
         function(err){
-            console.warn('RPM CDN head failed (host unreachable?), falling back to facecap:', err);
+            console.warn('RPM CDN head failed, falling back to facecap:', err);
             loadFacecap();
         });
 }
 
-// First try a locally-served model (no external internet needed).
-document.getElementById('loadMsg').textContent = 'Loading realistic 3D head...';
+// Load order: local /static/avatar_head.glb (if you add one) -> facecap.
+// The external RPM CDN is skipped by default (TRY_RPM_CDN=false) to avoid the
+// ERR_NAME_NOT_RESOLVED errors when there's no external internet access.
+document.getElementById('loadMsg').textContent = 'Loading 3D avatar...';
 loader.load(LOCAL_HEAD_URL, function(gltf){
         console.log('✅ Loaded local /static/avatar_head.glb');
         onModelLoaded(gltf, 'rpm');
     },
-    function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading realistic head... ' + Math.round(p.loaded/p.total*100) + '%'; },
+    undefined,
     function(){
-        // No local model present (or failed) -> try the RPM CDN, then facecap.
-        console.log('No local /static/avatar_head.glb; trying RPM CDN...');
-        loadRPM();
+        // No local model present -> go straight to facecap (or RPM if enabled).
+        if (TRY_RPM_CDN) { loadRPM(); }
+        else { loadFacecap(); }
     });
 
 function setMorph(name, val) {

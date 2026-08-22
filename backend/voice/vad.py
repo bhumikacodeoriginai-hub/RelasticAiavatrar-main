@@ -93,10 +93,17 @@ class VoiceActivityDetector:
                 aggressiveness=self.aggressiveness
             )
         except ImportError:
-            logger.error("webrtcvad not installed")
+            # VAD is optional; the app works fine without it.
+            logger.info("VAD not available (webrtcvad not installed) — continuing without VAD")
             raise
         except Exception as e:
-            logger.error("Failed to initialize VAD", error=str(e))
+            # Common cause: webrtcvad needs pkg_resources (from setuptools),
+            # which newer Python removed. Fix: pip install setuptools
+            logger.info(
+                "VAD unavailable — continuing without it (optional). "
+                "To enable: pip install setuptools webrtcvad",
+                detail=str(e),
+            )
             raise
 
     def on_speech_start(self, callback: Callable[[], Awaitable[None]]) -> None:

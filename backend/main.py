@@ -133,8 +133,10 @@ async def lifespan(app: FastAPI):
         await vad.initialize()
         app.state.vad = vad
         logger.info("✅ Voice Activity Detector initialized")
-    except Exception as e:
-        logger.error("❌ VAD initialization failed", error=str(e))
+    except Exception:
+        # VAD is optional (browser-side speech detection is used). Not a real
+        # error — log at info so it doesn't look alarming.
+        logger.info("ℹ️  VAD skipped (optional). To enable: pip install setuptools webrtcvad")
         app.state.vad = VoiceActivityDetector()
 
     # Initialize Vision Services
