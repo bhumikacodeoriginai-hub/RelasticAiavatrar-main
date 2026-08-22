@@ -100,7 +100,8 @@ class Settings(BaseSettings):
     did_source_url: str = ""
     did_api_base: str = "https://api.d-id.com"
     # Optional Microsoft/D-ID voice for the spoken audio in the generated video.
-    did_voice_id: str = "en-US-JennyNeural"
+    # Indian English female by default to match the app's en-IN setting.
+    did_voice_id: str = "en-IN-NeerjaNeural"
 
     @property
     def did_enabled(self) -> bool:

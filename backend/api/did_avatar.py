@@ -29,6 +29,9 @@ logger = structlog.get_logger()
 
 router = APIRouter(prefix="/api/did", tags=["did-avatar"])
 
+# Last failure reason, surfaced to the frontend/console for easy diagnosis.
+_LAST_ERROR = ""
+
 
 class SpeakRequest(BaseModel):
     text: str
@@ -88,19 +91,20 @@ async def create_talking_video(text: str) -> Optional[str]:
 
     base = settings.did_api_base.rstrip("/")
 
+    global _LAST_ERROR
+    _LAST_ERROR = ""
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             # 1) Create the talk
             resp = await client.post(f"{base}/talks", json=payload, headers=headers)
             if resp.status_code >= 400:
-                logger.warning(
-                    "D-ID create talk failed",
-                    status=resp.status_code,
-                    body=resp.text[:300],
-                )
+                _LAST_ERROR = f"create HTTP {resp.status_code}: {resp.text[:200]}"
+                logger.warning("D-ID create talk failed", status=resp.status_code, body=resp.text[:300])
                 return None
             talk_id = resp.json().get("id")
             if not talk_id:
+                _LAST_ERROR = "no talk id returned"
                 logger.warning("D-ID: no talk id returned")
                 return None
 
@@ -109,6 +113,7 @@ async def create_talking_video(text: str) -> Optional[str]:
                 await asyncio.sleep(1.0)
                 poll = await client.get(f"{base}/talks/{talk_id}", headers=headers)
                 if poll.status_code >= 400:
+                    _LAST_ERROR = f"poll HTTP {poll.status_code}"
                     logger.warning("D-ID poll failed", status=poll.status_code)
                     return None
                 data = poll.json()
@@ -118,21 +123,30 @@ async def create_talking_video(text: str) -> Optional[str]:
                     logger.info("D-ID talk ready", talk_id=talk_id)
                     return url
                 if status in ("error", "rejected"):
+                    _LAST_ERROR = f"{status}: {str(data.get('error') or data)[:200]}"
                     logger.warning("D-ID talk failed", status=status, detail=str(data)[:300])
                     return None
+            _LAST_ERROR = "timed out after ~30s"
             logger.warning("D-ID talk timed out", talk_id=talk_id)
             return None
     except Exception as e:
+        _LAST_ERROR = f"request error: {str(e)[:200]}"
         logger.warning("D-ID request error", error=str(e))
         return None
 
 
 @router.get("/status")
 async def did_status():
-    """Report whether D-ID is enabled (so the frontend can decide to use it)."""
+    """Report whether D-ID is enabled + config hints, so issues are easy to see."""
+    key = (settings.did_api_key or "").strip()
     return {
         "enabled": settings.did_enabled,
+        "has_key": bool(key),
+        "key_preview": (key[:6] + "…") if key else "",
         "has_source": bool(settings.did_source_url and settings.did_source_url.strip()),
+        "source_url": settings.did_source_url or "(default D-ID presenter)",
+        "voice_id": settings.did_voice_id,
+        "api_base": settings.did_api_base,
     }
 
 
@@ -143,8 +157,8 @@ async def did_speak(req: SpeakRequest):
     Always returns 200 with success flag so the frontend can fall back cleanly.
     """
     if not settings.did_enabled:
-        return {"success": False, "reason": "disabled"}
+        return {"success": False, "reason": "disabled (set DID_API_KEY in .env)"}
     url = await create_talking_video(req.text)
     if url:
         return {"success": True, "video_url": url}
-    return {"success": False, "reason": "generation_failed"}
+    return {"success": False, "reason": _LAST_ERROR or "generation_failed"}
