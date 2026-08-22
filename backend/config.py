@@ -136,5 +136,9 @@ try:
     _db_host = settings.database_url.split("@")[-1]
     print(f"[config] Loaded env file: {_ENV_FILE}")
     print(f"[config] DATABASE target: {_db_host}")
+    _k = (settings.did_api_key or "").strip()
+    print(f"[config] D-ID enabled: {settings.did_enabled}" + (f" (key {_k[:6]}…)" if _k else " (no DID_API_KEY)"))
+    if "DATABASE_URL=" in _db_host:
+        print("[config] ⚠️  DATABASE_URL looks doubled — remove the extra 'DATABASE_URL=' prefix in your .env")
 except Exception:
     pass
