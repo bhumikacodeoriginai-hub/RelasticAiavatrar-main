@@ -140,9 +140,11 @@ loader.setKTX2Loader(ktx2Loader);
 loader.setMeshoptDecoder(MeshoptDecoder);
 
 // A public Ready Player Me half-body avatar, requested with ARKit blendshapes.
-// (Override at runtime with window.AVATAR_RPM_URL before this script runs.)
+// This is a real, widely-used demo avatar id. To use YOUR OWN avatar, create
+// one free at https://readyplayer.me, copy its .glb link, and either replace
+// the URL below or set window.AVATAR_RPM_URL before this script runs.
 const RPM_URL = (window.AVATAR_RPM_URL) ||
-    'https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb?morphTargets=ARKit&textureAtlas=none&lod=0';
+    'https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb?morphTargets=ARKit&lod=0';
 const FACECAP_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb';
 
 function collectMorphMeshes(root) {
@@ -257,9 +259,23 @@ function onModelLoaded(gltf, kind) {
         addFakeHair(box.getSize(new THREE.Vector3()));
     }
 
-    console.log('✅ Avatar loaded (' + kind + '). Morph targets:', Object.keys(morphNames).length, Object.keys(morphNames).slice(0, 12).join(', '));
+    var nMorphs = Object.keys(morphNames).length;
+    console.log('✅ Avatar loaded (' + kind + '). Morph targets:', nMorphs, Object.keys(morphNames).slice(0, 12).join(', '));
     document.getElementById('loadMsg').style.display = 'none';
     document.getElementById('rT').textContent = '';
+    // Brief on-screen confirmation of which model + how many blendshapes loaded,
+    // so it's obvious whether the RPM head or the facecap fallback is showing.
+    try {
+        var badge = document.getElementById('modelBadge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'modelBadge';
+            badge.style.cssText = 'position:absolute;top:56px;left:24px;z-index:20;font-size:10px;color:#6ee7b7;background:rgba(15,15,21,.7);border:1px solid #1a1a25;border-radius:10px;padding:4px 9px;font-weight:600';
+            document.querySelector('.main').appendChild(badge);
+        }
+        badge.textContent = (kind === 'rpm' ? '● Realistic head (RPM)' : '● Fallback face') + ' · ' + nMorphs + ' blendshapes';
+        setTimeout(function(){ if (badge) badge.style.display = 'none'; }, 6000);
+    } catch (e) {}
 
     // Connect WebSocket (session starts when person detected by camera)
     setTimeout(function() { conn(); }, 300);
