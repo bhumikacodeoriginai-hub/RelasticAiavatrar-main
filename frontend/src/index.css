@@ -78,18 +78,21 @@
    eyes sit around 40% from the top. */
 .avatar-eyelid {
   position: absolute;
-  top: 38%;
-  width: 11%;
-  height: 3.2%;
+  /* Tuned for the Code Origin.AI receptionist portrait (wide image, face
+     centered, shown in a square 'object-cover object-top' container). Eyes
+     sit ~34% down; the two eyes are around 44% and 53% of the width. */
+  top: 34%;
+  width: 6%;
+  height: 2.6%;
   border-radius: 50%;
   /* Warm skin tone blended so the blink reads naturally over the photo. */
-  background: linear-gradient(#e7c6a6, #d9b48f);
-  filter: blur(1.5px);
+  background: linear-gradient(#e7c6a6, #d3ab84);
+  filter: blur(1.4px);
   transition: opacity 60ms ease-in-out;
   pointer-events: none;
 }
-.avatar-eyelid-left { left: 39%; }
-.avatar-eyelid-right { left: 50%; }
+.avatar-eyelid-left { left: 44%; }
+.avatar-eyelid-right { left: 53%; }
 
 /* --- Mouth overlay ---
    A soft dark ellipse over the lips that scales vertically with audio
@@ -97,10 +100,11 @@
    mouth sits around 56% from the top, horizontally centered. */
 .avatar-mouth-overlay {
   position: absolute;
-  top: 56%;
+  /* Mouth sits ~50% down, centered on this portrait. */
+  top: 50%;
   left: 50%;
-  width: 12%;
-  height: 6%;
+  width: 7%;
+  height: 5%;
   border-radius: 50%;
   background: radial-gradient(ellipse at center,
               rgba(60, 20, 22, 0.95) 0%,
@@ -114,10 +118,10 @@
 /* Soft shadow under the lower lip that deepens as the mouth opens. */
 .avatar-mouth-shadow {
   position: absolute;
-  top: 60%;
+  top: 53%;
   left: 50%;
-  width: 14%;
-  height: 3%;
+  width: 9%;
+  height: 2.5%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   background: radial-gradient(ellipse at center,

@@ -27,14 +27,22 @@ interface AvatarProps {
  */
 
 // Candidate locations for the receptionist portrait, tried in order.
+// The uploaded file lives at backend/static/receptionist.jpeg (served at
+// /static/receptionist.jpeg), so that path is included. Other extensions are
+// tried too so swapping the image later "just works".
 const IMAGE_CANDIDATES = [
-  '/receptionist.png',
-  '/receptionist.jpg',
-  '/static/receptionist.png',
-  '/static/receptionist.jpg',
-  // When the frontend is served on a different origin than the backend during
-  // dev, allow an explicit backend URL via Vite env (optional).
+  // Optional explicit override first.
   (import.meta.env.VITE_AVATAR_IMAGE_URL as string) || '',
+  // Backend static (where the image was uploaded).
+  '/static/receptionist.jpeg',
+  '/static/receptionist.jpg',
+  '/static/receptionist.png',
+  '/static/receptionist.webp',
+  // Frontend public/ (handy for local dev).
+  '/receptionist.jpeg',
+  '/receptionist.jpg',
+  '/receptionist.png',
+  '/receptionist.webp',
 ].filter(Boolean)
 
 function Avatar({ isSpeaking, isListening, state, audioRef }: AvatarProps) {
