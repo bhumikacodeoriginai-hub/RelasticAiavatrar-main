@@ -5,7 +5,38 @@ Loads from environment variables and .env file.
 
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pathlib import Path
 import os
+
+
+def _find_env_file() -> str:
+    """Locate the .env file robustly, regardless of the current working dir.
+
+    Historically ``env_file = ".env"`` was relative to CWD, so running
+    ``python main.py`` from the ``backend/`` folder while the .env lived in the
+    project root meant the file was never loaded (and the app silently fell
+    back to the localhost default). We now search a few known locations and
+    return an absolute path to the first one that exists.
+
+    Search order:
+      1. backend/.env            (next to this config.py)
+      2. <project root>/.env     (one level up from backend/)
+      3. ./.env                  (current working directory)
+    """
+    here = Path(__file__).resolve().parent            # .../backend
+    candidates = [
+        here / ".env",                                # backend/.env
+        here.parent / ".env",                         # project-root/.env
+        Path.cwd() / ".env",                          # wherever you launched from
+    ]
+    for c in candidates:
+        if c.is_file():
+            return str(c)
+    # Fall back to the default name; pydantic will just use env vars/defaults.
+    return ".env"
+
+
+_ENV_FILE = _find_env_file()
 
 
 class Settings(BaseSettings):
@@ -72,10 +103,22 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",")]
 
     class Config:
-        env_file = ".env"
+        # Absolute path resolved at import time so the .env is found no matter
+        # which directory the process was started from.
+        env_file = _ENV_FILE
         env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 # Global settings instance
 settings = Settings()
+
+# Make it obvious at startup which .env was loaded and where the DB points,
+# so a stale/misplaced .env (the classic "still localhost" bug) is easy to spot.
+try:
+    _db_host = settings.database_url.split("@")[-1]
+    print(f"[config] Loaded env file: {_ENV_FILE}")
+    print(f"[config] DATABASE target: {_db_host}")
+except Exception:
+    pass
