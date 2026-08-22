@@ -27,8 +27,16 @@ try:
         pool_size=5,
         max_overflow=3,
         pool_timeout=10,
-        pool_recycle=1800,
-        pool_pre_ping=True,
+        # Recycle connections well under MySQL's wait_timeout so stale
+        # connections are replaced without needing pre-ping.
+        pool_recycle=280,
+        # NOTE: pool_pre_ping is intentionally DISABLED. The installed asyncmy
+        # version's connection.ping() requires a 'reconnect' arg that
+        # SQLAlchemy's pre-ping wrapper does not pass, which raised:
+        #   AsyncAdapt_asyncmy_connection.ping() missing 1 required positional
+        #   argument: 'reconnect'
+        # and intermittently killed queries. pool_recycle handles staleness.
+        pool_pre_ping=False,
     )
     AsyncSessionLocal = async_sessionmaker(
         engine,

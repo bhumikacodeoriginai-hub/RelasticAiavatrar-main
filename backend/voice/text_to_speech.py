@@ -29,16 +29,40 @@ class TextToSpeech:
         "matthew": {"id": "Matthew", "gender": "Male", "engine": "neural"},
     }
 
+    # Voices that ONLY support the standard engine (neural is rejected by Polly).
+    # 'Aditi' is standard-only, which caused:
+    #   ValidationException: This voice does not support the selected engine: neural
+    STANDARD_ONLY_VOICES = {"aditi"}
+
     def __init__(self):
         """Initialize the TTS service."""
         self.voice_id = settings.polly_voice_id
-        self.engine = settings.polly_engine
         self.language_code = settings.polly_language_code
         self.region = settings.aws_region
         self.client = None
         self._initialized = False
         self.output_format = "mp3"
         self.sample_rate = "24000"
+
+        # Resolve a VALID engine for the configured voice so a mismatched
+        # .env (e.g. Aditi + neural) never blocks speech synthesis.
+        self.engine = self._resolve_engine(self.voice_id, settings.polly_engine)
+
+    def _resolve_engine(self, voice_id: str, requested_engine: str) -> str:
+        """Return an engine the given voice actually supports.
+
+        If the voice is standard-only (like Aditi) but 'neural' was requested,
+        transparently fall back to 'standard' instead of failing every call.
+        """
+        requested = (requested_engine or "standard").lower()
+        vkey = (voice_id or "").lower()
+        if vkey in self.STANDARD_ONLY_VOICES and requested == "neural":
+            logger.warning(
+                "Voice does not support neural engine; falling back to standard",
+                voice=voice_id,
+            )
+            return "standard"
+        return requested
 
     async def initialize(self) -> None:
         """Initialize the Amazon Polly client."""
@@ -77,31 +101,47 @@ class TextToSpeech:
         if not text or not text.strip():
             return None
 
-        try:
-            response = self.client.synthesize_speech(
-                Text=text,
-                OutputFormat=self.output_format,
-                VoiceId=self.voice_id,
-                Engine=self.engine,
-                LanguageCode=self.language_code,
-                SampleRate=self.sample_rate
-            )
+        # Try the resolved engine, then fall back to 'standard' if Polly still
+        # rejects it, so speech is never silently dropped.
+        engines_to_try = [self.engine]
+        if self.engine != "standard":
+            engines_to_try.append("standard")
 
-            audio_stream = response.get("AudioStream")
-            if audio_stream:
-                audio_bytes = audio_stream.read()
-                logger.info(
-                    "Speech synthesized",
-                    text_length=len(text),
-                    audio_size=len(audio_bytes)
+        last_error = None
+        for engine in engines_to_try:
+            try:
+                response = self.client.synthesize_speech(
+                    Text=text,
+                    OutputFormat=self.output_format,
+                    VoiceId=self.voice_id,
+                    Engine=engine,
+                    LanguageCode=self.language_code,
+                    SampleRate=self.sample_rate
                 )
-                return audio_bytes
 
-            return None
+                audio_stream = response.get("AudioStream")
+                if audio_stream:
+                    audio_bytes = audio_stream.read()
+                    if engine != self.engine:
+                        # Remember the working engine for subsequent calls.
+                        logger.warning(
+                            "TTS engine fell back", from_engine=self.engine, to_engine=engine
+                        )
+                        self.engine = engine
+                    logger.info(
+                        "Speech synthesized",
+                        text_length=len(text),
+                        audio_size=len(audio_bytes),
+                        engine=engine,
+                    )
+                    return audio_bytes
+                return None
+            except Exception as e:
+                last_error = e
+                continue
 
-        except Exception as e:
-            logger.error("Error synthesizing speech", error=str(e), text=text[:50])
-            return None
+        logger.error("Error synthesizing speech", error=str(last_error), text=text[:50])
+        return None
 
     async def synthesize_ssml(self, ssml_text: str) -> Optional[bytes]:
         """

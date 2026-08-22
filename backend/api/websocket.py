@@ -211,35 +211,8 @@ async def handle_speech(
         logger.error("Bedrock/AI error", error=str(e))
         response_text = f"I heard you say: '{text}'. I'm having trouble connecting right now, but I'm here to help!"
 
-    # Save conversation to MySQL (non-blocking, skip if DB unavailable)
-    try:
-        from database.database import AsyncSessionLocal
-        if AsyncSessionLocal:
-            from database.mysql_visitor import MySQLVisitorService
-            async with AsyncSessionLocal() as db:
-                svc = MySQLVisitorService(db)
-                session = conv_manager.get_session(session_id)
-                
-                if session and session.visitor_context.name:
-                    visitor = await svc.find_visitor_by_name(session.visitor_context.name)
-                    
-                    if not visitor:
-                        vid = await svc.register_visitor(name=session.visitor_context.name)
-                        await svc.log_visit(vid)
-                        logger.info("NEW visitor saved", name=session.visitor_context.name, id=vid)
-                        
-                        # Tell frontend to register face for this visitor
-                        await ws_manager.send_to_client(client_id, {
-                            "type": "register_face",
-                            "name": session.visitor_context.name
-                        })
-                    elif visitor:
-                        await svc.save_conversation(visitor['id'], 'visitor', text)
-                        await svc.save_conversation(visitor['id'], 'ai', response_text)
-    except Exception as e:
-        logger.warning("DB save skipped", error=str(e))
-
-    # Generate audio (non-critical)
+    # Generate audio right away. The DB persistence is kicked off concurrently
+    # (below) so it never delays the spoken reply.
     audio_base64 = None
     try:
         if response_text and tts._initialized:
@@ -248,6 +221,12 @@ async def handle_speech(
                 audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
     except Exception as e:
         logger.warning("TTS failed", error=str(e))
+
+    # Persist the conversation to MySQL in the background (fire-and-forget) so
+    # the user hears the response without waiting on DB round-trips.
+    asyncio.create_task(
+        _persist_conversation(client_id, conv_manager, session_id, text, response_text)
+    )
 
     # Get current state
     session = conv_manager.get_session(session_id)
@@ -262,6 +241,47 @@ async def handle_speech(
         "session_id": session_id,
         "visitor_name": session.visitor_context.name if session else None
     })
+
+
+async def _persist_conversation(
+    client_id: str,
+    conv_manager: ConversationManager,
+    session_id: str,
+    user_text: str,
+    response_text: str,
+) -> None:
+    """Save the conversation turn to MySQL without blocking the reply.
+
+    Runs as a background task. Any DB issue is logged and swallowed so it can
+    never affect the live conversation.
+    """
+    try:
+        from database.database import AsyncSessionLocal
+        if not AsyncSessionLocal:
+            return
+        from database.mysql_visitor import MySQLVisitorService
+        async with AsyncSessionLocal() as db:
+            svc = MySQLVisitorService(db)
+            session = conv_manager.get_session(session_id)
+
+            if session and session.visitor_context.name:
+                visitor = await svc.find_visitor_by_name(session.visitor_context.name)
+
+                if not visitor:
+                    vid = await svc.register_visitor(name=session.visitor_context.name)
+                    await svc.log_visit(vid)
+                    logger.info("NEW visitor saved", name=session.visitor_context.name, id=vid)
+
+                    # Tell frontend to register face for this visitor
+                    await ws_manager.send_to_client(client_id, {
+                        "type": "register_face",
+                        "name": session.visitor_context.name
+                    })
+                else:
+                    await svc.save_conversation(visitor['id'], 'visitor', user_text)
+                    await svc.save_conversation(visitor['id'], 'ai', response_text)
+    except Exception as e:
+        logger.warning("DB save skipped", error=str(e))
 
 
 async def handle_start_session(
@@ -334,15 +354,16 @@ async def handle_start_session(
         else:
             greeting = "Hello! Welcome to Code Origin.AI. I don't think we've met before. May I know your name?"
 
-    # Generate audio (non-critical)
+    # Generate audio (non-critical). We intentionally skip the extra
+    # get_speech_marks() Polly round-trip here: it added ~0.5-1s of latency and
+    # the avatar now derives lip-sync from the live audio amplitude, so the
+    # marks were unused.
     audio_base64 = None
-    speech_marks = None
     try:
         if greeting and tts._initialized:
             audio_bytes = await tts.synthesize(greeting)
             if audio_bytes:
                 audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
-            speech_marks = await tts.get_speech_marks(greeting)
     except Exception as e:
         logger.warning("TTS failed for greeting", error=str(e))
 
@@ -350,7 +371,6 @@ async def handle_start_session(
         "type": "response",
         "text": greeting,
         "audio": audio_base64,
-        "speech_marks": speech_marks,
         "state": session.state.value,
         "session_id": session.session_id
     })
