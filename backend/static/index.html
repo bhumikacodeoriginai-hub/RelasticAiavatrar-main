@@ -515,7 +515,12 @@ function showDIDIdle(){
     } catch(e){}
 }
 
-fetch('/api/did/status').then(r=>r.json()).then(d=>{
+// D-ID is DISABLED — using the free 3D avatar (D-ID free credits ran out and
+// per-video billing is not wanted). The D-ID code is kept but never used; to
+// re-enable later, flip USE_DID to true (and ensure the account has credits).
+const USE_DID = false;
+
+if (USE_DID) fetch('/api/did/status').then(r=>r.json()).then(d=>{
     DID_ENABLED = !!(d && d.enabled);
     console.log('D-ID status:', d);
     if (DID_ENABLED) {
@@ -530,6 +535,9 @@ fetch('/api/did/status').then(r=>r.json()).then(d=>{
         didBadge('● D-ID OFF — using 3D avatar (set DID_API_KEY)', '#fbbf24');
     }
 }).catch(function(){ didBadge('● D-ID status check failed — using 3D', '#f87171'); });
+
+// Confirm 3D-avatar mode on screen (D-ID disabled).
+if (!USE_DID) { try { didBadge('● 3D avatar mode', '#93c5fd'); setTimeout(function(){ var b=document.getElementById('didBadge'); if(b) b.style.display='none'; }, 5000); } catch(e){} }
 
 function finishSpeaking(){
     speaking = false;
