@@ -15,6 +15,13 @@ export default defineConfig({
         target: 'ws://localhost:8000',
         ws: true,
       },
+      // Serve backend static assets (e.g. the receptionist portrait at
+      // /static/receptionist.png) through the dev server so the photo avatar
+      // loads during local development too.
+      '/static': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
   },
 })

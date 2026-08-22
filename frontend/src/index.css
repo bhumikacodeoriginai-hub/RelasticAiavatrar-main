@@ -29,8 +29,8 @@
   }
 
   .avatar-container {
-    @apply relative w-full max-w-md mx-auto aspect-square rounded-full overflow-hidden;
-    background: radial-gradient(ellipse at 50% 35%, #24466e 0%, #14233c 55%, #0b1220 100%);
+    @apply relative w-full max-w-md mx-auto aspect-square rounded-2xl overflow-hidden;
+    background: radial-gradient(ellipse at 50% 35%, #2a2410 0%, #14120a 55%, #0b0a06 100%);
     box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55);
   }
 
@@ -47,46 +47,83 @@
   }
 }
 
-/* Realistic avatar face + subtle life-like motion.
-   The mouth itself is now driven per-frame from real audio amplitude in
-   Avatar.tsx, so we no longer scale it via CSS. These animations only add
-   the subtle "living" feel (breathing, gentle sway) and speaking energy. */
-.avatar-face {
-  transform-origin: 50% 60%;
-  animation: avatar-breathe 5s ease-in-out infinite;
+/* ============================================================
+   Photoreal receptionist avatar (Option 3)
+   The portrait is a real photo; we overlay subtle life-like motion.
+   Mouth openness is driven per-frame from real audio amplitude in
+   Avatar.tsx (inline transform), so CSS only adds ambient motion.
+   ============================================================ */
+
+/* The whole photo breathes + sways gently to feel alive. */
+.avatar-photo {
+  transform-origin: 50% 45%;
+  animation: avatar-photo-sway 7s ease-in-out infinite;
+  will-change: transform;
 }
 
-.avatar-head {
-  transform-origin: 150px 240px;
-  animation: avatar-sway 7s ease-in-out infinite;
+/* A touch more energy while speaking. */
+.avatar-speaking .avatar-photo {
+  animation: avatar-photo-sway 4.5s ease-in-out infinite;
 }
 
-/* A touch more energy/lean while speaking */
-.avatar-speaking .avatar-head {
-  animation: avatar-sway 4s ease-in-out infinite;
-}
-
-/* Gentle brow lift when listening (engaged/attentive look) */
-.avatar-listening .avatar-brow {
-  animation: brow-lift 2.4s ease-in-out infinite;
-}
-
-@keyframes avatar-breathe {
+@keyframes avatar-photo-sway {
   0%,
-  100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-3px) scale(1.012); }
+  100% { transform: rotate(-0.8deg) translate(-2px, 0) scale(1.02); }
+  50%  { transform: rotate(0.9deg) translate(2px, -3px) scale(1.03); }
 }
 
-@keyframes avatar-sway {
-  0%,
-  100% { transform: rotate(-1deg) translateX(-2px); }
-  50% { transform: rotate(1.2deg) translateX(2px); }
+/* --- Blinking eyelids ---
+   Thin skin-toned bars positioned over each eye. They fade in briefly to
+   simulate a blink. Tuned (as % of the face box) for the receptionist photo:
+   eyes sit around 40% from the top. */
+.avatar-eyelid {
+  position: absolute;
+  top: 38%;
+  width: 11%;
+  height: 3.2%;
+  border-radius: 50%;
+  /* Warm skin tone blended so the blink reads naturally over the photo. */
+  background: linear-gradient(#e7c6a6, #d9b48f);
+  filter: blur(1.5px);
+  transition: opacity 60ms ease-in-out;
+  pointer-events: none;
+}
+.avatar-eyelid-left { left: 39%; }
+.avatar-eyelid-right { left: 50%; }
+
+/* --- Mouth overlay ---
+   A soft dark ellipse over the lips that scales vertically with audio
+   amplitude to mimic the mouth opening. Tuned for the receptionist photo:
+   mouth sits around 56% from the top, horizontally centered. */
+.avatar-mouth-overlay {
+  position: absolute;
+  top: 56%;
+  left: 50%;
+  width: 12%;
+  height: 6%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+              rgba(60, 20, 22, 0.95) 0%,
+              rgba(90, 35, 38, 0.85) 55%,
+              rgba(120, 60, 60, 0) 100%);
+  transform-origin: center center;
+  transition: opacity 80ms linear;
+  pointer-events: none;
 }
 
-@keyframes brow-lift {
-  0%,
-  100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
+/* Soft shadow under the lower lip that deepens as the mouth opens. */
+.avatar-mouth-shadow {
+  position: absolute;
+  top: 60%;
+  left: 50%;
+  width: 14%;
+  height: 3%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+              rgba(0, 0, 0, 0.35) 0%, rgba(0, 0, 0, 0) 100%);
+  transition: opacity 80ms linear;
+  pointer-events: none;
 }
 
 @keyframes glow {
