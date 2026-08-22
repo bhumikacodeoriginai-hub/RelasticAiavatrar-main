@@ -130,8 +130,10 @@ async def create_talking_video(text: str) -> Optional[str]:
             logger.warning("D-ID talk timed out", talk_id=talk_id)
             return None
     except Exception as e:
-        _LAST_ERROR = f"request error: {str(e)[:200]}"
-        logger.warning("D-ID request error", error=str(e))
+        # Include the exception TYPE — connection/DNS errors often have an empty
+        # str(e), so the type (e.g. ConnectError, ConnectTimeout) is the clue.
+        _LAST_ERROR = f"{type(e).__name__}: {str(e)[:200]}"
+        logger.warning("D-ID request error", error_type=type(e).__name__, error=repr(e))
         return None
 
 
@@ -148,6 +150,29 @@ async def did_status():
         "voice_id": settings.did_voice_id,
         "api_base": settings.did_api_base,
     }
+
+
+@router.get("/ping")
+async def did_ping():
+    """Diagnostic: can the BACKEND reach D-ID? Tests auth + connectivity.
+
+    Open http://localhost:5000/api/did/ping in a browser to see the result.
+    """
+    if not settings.did_enabled:
+        return {"ok": False, "reason": "disabled (no DID_API_KEY)"}
+    base = settings.did_api_base.rstrip("/")
+    headers = {"Authorization": _auth_header(), "accept": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            # /credits is a lightweight authenticated endpoint.
+            r = await client.get(f"{base}/credits", headers=headers)
+            return {
+                "ok": r.status_code < 400,
+                "status_code": r.status_code,
+                "body": r.text[:300],
+            }
+    except Exception as e:
+        return {"ok": False, "error_type": type(e).__name__, "error": repr(e)[:300]}
 
 
 @router.post("/speak")
