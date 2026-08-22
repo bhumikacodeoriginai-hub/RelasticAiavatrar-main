@@ -139,10 +139,15 @@ ktx2Loader.detectSupport(renderer);
 loader.setKTX2Loader(ktx2Loader);
 loader.setMeshoptDecoder(MeshoptDecoder);
 
-// A public Ready Player Me half-body avatar, requested with ARKit blendshapes.
-// This is a real, widely-used demo avatar id. To use YOUR OWN avatar, create
-// one free at https://readyplayer.me, copy its .glb link, and either replace
-// the URL below or set window.AVATAR_RPM_URL before this script runs.
+// Avatar model resolution order (first that loads wins):
+//   1) LOCAL file served by the backend: /static/avatar_head.glb
+//      -> Best for production: no external internet needed. Your machine could
+//         not resolve models.readyplayer.me (ERR_NAME_NOT_RESOLVED), so place a
+//         Ready Player Me .glb (exported with ARKit morph targets) at
+//         backend/static/avatar_head.glb and it will be used automatically.
+//   2) The Ready Player Me CDN URL (only works if the host is reachable).
+//   3) facecap.glb fallback (works from jsdelivr).
+const LOCAL_HEAD_URL = '/static/avatar_head.glb';
 const RPM_URL = (window.AVATAR_RPM_URL) ||
     'https://models.readyplayer.me/62ea7bc28a6d28ec134bbcce.glb?morphTargets=ARKit&lod=0';
 const FACECAP_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb';
@@ -294,13 +299,28 @@ function loadFacecap() {
         });
 }
 
-// Try the high-quality RPM head first; fall back to facecap on any error.
+// Load order: local /static/avatar_head.glb  ->  RPM CDN  ->  facecap.
+function loadRPM() {
+    document.getElementById('loadMsg').textContent = 'Loading realistic 3D head...';
+    loader.load(RPM_URL, function(gltf){ onModelLoaded(gltf, 'rpm'); },
+        function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading realistic head... ' + Math.round(p.loaded/p.total*100) + '%'; },
+        function(err){
+            console.warn('RPM CDN head failed (host unreachable?), falling back to facecap:', err);
+            loadFacecap();
+        });
+}
+
+// First try a locally-served model (no external internet needed).
 document.getElementById('loadMsg').textContent = 'Loading realistic 3D head...';
-loader.load(RPM_URL, function(gltf){ onModelLoaded(gltf, 'rpm'); },
+loader.load(LOCAL_HEAD_URL, function(gltf){
+        console.log('✅ Loaded local /static/avatar_head.glb');
+        onModelLoaded(gltf, 'rpm');
+    },
     function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading realistic head... ' + Math.round(p.loaded/p.total*100) + '%'; },
-    function(err){
-        console.warn('RPM head failed, falling back to facecap:', err);
-        loadFacecap();
+    function(){
+        // No local model present (or failed) -> try the RPM CDN, then facecap.
+        console.log('No local /static/avatar_head.glb; trying RPM CDN...');
+        loadRPM();
     });
 
 function setMorph(name, val) {
