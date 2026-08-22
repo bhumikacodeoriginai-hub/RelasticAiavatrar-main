@@ -537,13 +537,20 @@ function finishSpeaking(){
     if (personPresent) startRec();
 }
 
+// Tracks whether the browser can actually PLAY D-ID video (its CDN reachable).
+// Starts unknown; we probe on the first reply. If it can't play, we stop
+// waiting on D-ID and just speak immediately (reliable, works offline).
+let DID_VIDEO_OK = null; // null = unknown, true/false after first attempt
+
 function say(t){
     if(!t) return;
     // Always show the text + transcript immediately.
     document.getElementById('rT').textContent = t;
     addTx('a', t);
 
-    if (DID_ENABLED) {
+    // If D-ID video is known NOT to play on this machine, don't wait on it —
+    // speak right away with the browser voice over the still photo.
+    if (DID_ENABLED && DID_VIDEO_OK !== false) {
         sayWithDID(t);
     } else {
         sayWith3D(t);
@@ -551,11 +558,11 @@ function say(t){
 }
 
 function sayWithDID(t){
-    // Stop any 3D speech/mouth so the two paths never overlap.
-    try { speechSynthesis.cancel(); } catch(e){}
-    stopMouth();
-    speaking = true; stopRec(); setS('speaking');
+    // Speak with the browser voice IMMEDIATELY so there is never dead air while
+    // D-ID renders. If the D-ID video manages to load, we swap to it.
+    sayWith3D(t);
 
+    // Attempt D-ID video in the background (non-blocking).
     fetch('/api/did/speak', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -565,40 +572,28 @@ function sayWithDID(t){
     .then(function(data){
         if (data && data.success && data.video_url) {
             const vid = document.getElementById('didVid');
-            var fellBack = false;
-            function fallback3D(){
-                if (fellBack) return; fellBack = true;
-                clearTimeout(startGuard);
-                vid.classList.remove('on');
-                showDIDIdle();
-                sayWith3D(t);
-            }
-            // If the video can't even start playing within 6s (e.g. the D-ID
-            // video host is unreachable from this machine), fall back to 3D so
-            // the receptionist still speaks.
-            var startGuard = setTimeout(fallback3D, 6000);
-
-            vid.onloadeddata = function(){ clearTimeout(startGuard); };
+            var started = false;
+            var guard = setTimeout(function(){
+                if (!started) { DID_VIDEO_OK = false; vid.classList.remove('on'); }
+            }, 5000);
+            vid.onloadeddata = function(){
+                started = true; DID_VIDEO_OK = true; clearTimeout(guard);
+                // Video is available: stop the browser voice and let the video's
+                // own audio play in sync with the real-human face.
+                try { speechSynthesis.cancel(); } catch(e){}
+                stopMouth();
+                vid.currentTime = 0; vid.muted = false; vid.play().catch(function(){});
+                vid.classList.add('on');
+            };
+            vid.onended = function(){ vid.classList.remove('on'); showDIDIdle(); };
+            vid.onerror = function(){ DID_VIDEO_OK = false; vid.classList.remove('on'); };
             vid.src = data.video_url;
-            vid.classList.add('on');   // video sits above the idle image (z-index)
-            vid.muted = false;
-            vid.play().then(function(){
-                clearTimeout(startGuard); // real human video is playing
-            }).catch(function(){
-                fallback3D();
-            });
-            // When the reply finishes, hide the video and show the idle image
-            // again (never revert to the 3D doll if D-ID is working).
-            vid.onended = function(){ vid.classList.remove('on'); showDIDIdle(); finishSpeaking(); };
-            vid.onerror = function(){ fallback3D(); };
         } else {
-            // D-ID failed to generate -> show reason + fall back to 3D avatar.
             console.warn('D-ID speak failed:', data && data.reason);
-            didBadge('● D-ID failed: ' + ((data && data.reason) || 'unknown') + ' — using 3D', '#f87171');
-            sayWith3D(t);
+            didBadge('● D-ID unavailable: ' + ((data && data.reason) || 'error'), '#fbbf24');
         }
     })
-    .catch(function(e){ console.warn('D-ID request error:', e); sayWith3D(t); });
+    .catch(function(e){ console.warn('D-ID request error:', e); /* browser voice already speaking */ });
 }
 
 function sayWith3D(t){
