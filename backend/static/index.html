@@ -5,10 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Code Origin.AI — Intelligent Reception</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
-    </script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}html,body{height:100%;overflow:hidden}
         body{font-family:'Inter',sans-serif;background:#000;color:#fff;-webkit-font-smoothing:antialiased}
@@ -18,7 +14,6 @@
         .logo{display:flex;align-items:center;gap:8px}.logo-i{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,#2563eb,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800}.logo-t{font-size:14px;font-weight:700}.logo-s{font-size:8px;color:#555;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;margin-top:1px}
         .chips{display:flex;gap:6px}.chip{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:12px;background:#0f0f15;border:1px solid #1a1a25;font-size:9px;color:#666}.cd{width:5px;height:5px;border-radius:50%}.cd.g{background:#0f0;box-shadow:0 0 4px #0f0}.cd.r{background:#f00}.cd.y{background:#fa0;animation:bl 1.5s infinite}@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
         .av-wrap{width:100%;height:100%;position:absolute;top:0;left:0}
-        #c3d{width:100%;height:100%;display:block}
         .glow{position:absolute;inset:-4px;border-radius:20px;border:2px solid transparent;transition:all .6s;pointer-events:none}.glow.speaking{border-color:#2563eb;box-shadow:0 0 40px rgba(37,99,235,.15)}.glow.listening{border-color:#10b981;box-shadow:0 0 40px rgba(16,185,129,.12)}.glow.thinking{border-color:#f59e0b;box-shadow:0 0 40px rgba(245,158,11,.12)}
         .wf{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:3px;align-items:flex-end;height:24px;opacity:0;transition:opacity .3s}.wf.on{opacity:1}.wvb{width:3px;border-radius:2px;background:#2563eb;animation:wva .4s ease-in-out infinite alternate}.wvb:nth-child(1){height:5px;animation-delay:0s}.wvb:nth-child(2){height:12px;animation-delay:.06s}.wvb:nth-child(3){height:18px;animation-delay:.12s}.wvb:nth-child(4){height:12px;animation-delay:.06s}.wvb:nth-child(5){height:5px;animation-delay:0s}@keyframes wva{to{height:3px}}
         .stl{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:14px;font-size:10px;font-weight:600;background:rgba(15,15,21,0.8);border:1px solid #1a1a25;color:#555;letter-spacing:.3px;z-index:10}.stl.speaking{color:#2563eb;border-color:rgba(37,99,235,.25)}.stl.listening{color:#10b981;border-color:rgba(16,185,129,.25)}.stl.thinking{color:#f59e0b;border-color:rgba(245,158,11,.25)}
@@ -34,6 +29,18 @@
         .te{margin-bottom:8px}.teh{display:flex;gap:4px;align-items:center;margin-bottom:1px}.ter{font-size:7px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}.ter.a{color:#2563eb}.ter.u{color:#10b981}.tet{font-size:7px;color:#2a2a2a}.teb{font-size:10px;color:#666;line-height:1.5}
         ::-webkit-scrollbar{width:2px}::-webkit-scrollbar-thumb{background:#1a1a1a;border-radius:1px}
         .loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:12px;color:#444;z-index:5}
+        /* ===== Photoreal receptionist avatar (Option 3) ===== */
+        .photo-stage{width:100%;height:100%;position:absolute;top:0;left:0;display:flex;align-items:center;justify-content:center;overflow:hidden;background:radial-gradient(ellipse at 50% 38%,#2a2410 0%,#14120a 55%,#0b0a06 100%)}
+        .photo-inner{position:relative;width:100%;height:100%}
+        #avatarImg{width:100%;height:100%;object-fit:cover;object-position:center 22%;transform-origin:50% 42%;animation:photoSway 7s ease-in-out infinite;will-change:transform;user-select:none}
+        .photo-stage.speaking #avatarImg{animation:photoSway 4.5s ease-in-out infinite}
+        @keyframes photoSway{0%,100%{transform:rotate(-0.7deg) translate(-2px,0) scale(1.02)}50%{transform:rotate(0.8deg) translate(2px,-3px) scale(1.03)}}
+        /* Blink eyelids (tuned to receptionist.jpeg: eyes ~34% top, at 44%/53% width) */
+        .eyelid{position:absolute;top:34%;width:6%;height:2.6%;border-radius:50%;background:linear-gradient(#e7c6a6,#d3ab84);filter:blur(1.4px);opacity:0;transition:opacity 60ms ease-in-out;pointer-events:none}
+        .eyelid.l{left:44%}.eyelid.r{left:53%}
+        /* Mouth overlay (mouth ~50% top, centered) */
+        .mouth{position:absolute;top:50%;left:50%;width:7%;height:5%;border-radius:50%;background:radial-gradient(ellipse at center,rgba(60,20,22,0.95) 0%,rgba(90,35,38,0.85) 55%,rgba(120,60,60,0) 100%);transform-origin:center center;transform:translate(-50%,-50%) scaleY(0.15);opacity:0;transition:opacity 80ms linear;pointer-events:none}
+        .mouth-shadow{position:absolute;top:53%;left:50%;width:9%;height:2.5%;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(ellipse at center,rgba(0,0,0,0.35) 0%,rgba(0,0,0,0) 100%);opacity:0;transition:opacity 80ms linear;pointer-events:none}
     </style>
 </head>
 <body>
@@ -43,7 +50,7 @@
             <div class="logo"><div class="logo-i">CO</div><div><div class="logo-t">Code Origin.AI</div><div class="logo-s">Intelligent Reception</div></div></div>
             <div class="chips"><div class="chip"><div class="cd g"></div>AI</div><div class="chip"><div class="cd" id="dM"></div><span id="lM">—</span></div><div class="chip"><div class="cd" id="dC"></div><span id="lC">...</span></div></div>
         </div>
-        <div class="av-wrap"><div class="loading" id="loadMsg">Loading 3D avatar...</div><canvas id="c3d"></canvas><div class="wf" id="wf"><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div></div></div>
+        <div class="av-wrap"><div class="loading" id="loadMsg" style="display:none"></div><div class="photo-stage" id="photoStage"><div class="photo-inner"><img id="avatarImg" src="/static/receptionist.jpeg" alt="AI Receptionist" draggable="false"><div class="eyelid l" id="eyeL"></div><div class="eyelid r" id="eyeR"></div><div class="mouth" id="mouth"></div><div class="mouth-shadow" id="mouthShadow"></div></div></div><div class="wf" id="wf"><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div></div></div>
         <div class="stl" id="stl">Click anywhere to start</div>
         <div class="resp"><p id="rT">Click anywhere on screen to activate voice</p></div>
         <div class="livs" id="livs"></div>
@@ -56,299 +63,43 @@
     </div>
 </div>
 <audio id="aud"></audio>
-<script type="module">
-import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+<script>
+// ============================================================
+// Photoreal receptionist avatar (Option 3)
+// The 3D Three.js face was replaced with a real portrait photo
+// (/static/receptionist.jpeg) plus lightweight CSS overlay animation.
+// mouthVal / blinkVal are still driven by the SAME startMouth()/stopMouth()
+// and doBlink() functions below, so all working logic is unchanged.
+// ============================================================
+let mouthVal = 0, blinkVal = 0, mouthShown = 0;
+const _img = document.getElementById('avatarImg');
+const _mouth = document.getElementById('mouth');
+const _mouthShadow = document.getElementById('mouthShadow');
+const _eyeL = document.getElementById('eyeL');
+const _eyeR = document.getElementById('eyeR');
 
-// ===== SCENE SETUP =====
-const canvas = document.getElementById('c3d');
-const mainEl = document.querySelector('.main');
-const W = mainEl.clientWidth;
-const H = mainEl.clientHeight;
-
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x12101a);
-
-const camera = new THREE.PerspectiveCamera(35, W/H, 0.1, 1000);
-camera.position.set(0, 0, 5);
-
-const renderer = new THREE.WebGLRenderer({canvas, antialias: true, alpha: false});
-renderer.setSize(W, H);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-// Lighting - realistic skin rendering (warm key + cool fill = skin looks natural)
-scene.add(new THREE.AmbientLight(0xfff5ee, 0.5));
-const key = new THREE.DirectionalLight(0xfff0dd, 2.0); key.position.set(1.5, 2, 3); scene.add(key);
-const fill = new THREE.DirectionalLight(0x9db8e0, 0.6); fill.position.set(-2, 0.5, 2); scene.add(fill);
-const rim = new THREE.DirectionalLight(0xffeedd, 1.0); rim.position.set(0, 1, -3); scene.add(rim);
-const bottom = new THREE.DirectionalLight(0xffddcc, 0.3); bottom.position.set(0, -2, 1); scene.add(bottom);
-
-// Environment map for realistic skin reflections
-const pmremGenerator = new THREE.PMREMGenerator(renderer);
-const envScene = new THREE.Scene();
-envScene.background = new THREE.Color(0x888899);
-const envMap = pmremGenerator.fromScene(envScene).texture;
-scene.environment = envMap;
-
-// OrbitControls - drag to rotate, scroll to zoom, right-click to pan
-const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true;
-controls.dampingFactor = 0.05;
-controls.screenSpacePanning = true;
-controls.minDistance = 10;
-controls.maxDistance = 300;
-controls.target.set(0, 5, 0);
-
-// ===== LOAD REAL 3D HUMAN FACE (THREE.JS OFFICIAL) =====
-let morphMesh = null, morphDict = {}, headGroup = null;
-const clock = new THREE.Clock();
-let mouthVal = 0, blinkVal = 0, headRY = 0, headRX = 0;
-
-const loader = new GLTFLoader();
-
-// KTX2 + Meshopt decoders (required for FaceCap model)
-const ktx2Loader = new KTX2Loader();
-ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
-ktx2Loader.detectSupport(renderer);
-loader.setKTX2Loader(ktx2Loader);
-loader.setMeshoptDecoder(MeshoptDecoder);
-
-// Load FaceCap - realistic 3D face with 52 ARKit morph targets
-document.getElementById('loadMsg').textContent = 'Loading 3D face with expressions...';
-
-loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb', function(gltf) {
-    headGroup = gltf.scene;
-    scene.add(headGroup);
-    
-    // Auto-frame face in view
-    const box = new THREE.Box3().setFromObject(headGroup);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    console.log('FaceCap size:', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
-    
-    headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    // Face fills most of the screen
-    camera.position.set(0, 0, maxDim * 1.1);
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    controls.minDistance = maxDim * 0.5;
-    controls.maxDistance = maxDim * 4;
-    camera.near = 0.001;
-    camera.far = 100;
-    camera.updateProjectionMatrix();
-    
-    // Play animation if available
-    if (gltf.animations && gltf.animations.length > 0) {
-        var mixer = new THREE.AnimationMixer(headGroup);
-        var action = mixer.clipAction(gltf.animations[0]);
-        action.play();
-        // Store mixer for update loop
-        window._mixer = mixer;
-    }
-
-    // Find ALL meshes with morph targets
-    headGroup.traverse(function(child) {
-        if (child.isMesh) {
-            if (child.morphTargetInfluences && child.morphTargetDictionary) {
-                morphMesh = child;
-                morphDict = child.morphTargetDictionary;
-            }
-            if (child.material) {
-                child.material.roughness = 0.4;
-                child.material.metalness = 0.0;
-                child.material.envMapIntensity = 0.8;
-                if (!child.material.map) {
-                    child.material.color = new THREE.Color(0xf2c5a0);
-                }
-                child.material.needsUpdate = true;
-            }
-        }
-    });
-    
-    // === ADD REALISTIC DARK HAIR ===
-    const hairMat = new THREE.MeshStandardMaterial({color: 0x080605, roughness: 0.7, metalness: 0.05});
-    const hairGroup = new THREE.Group();
-    const hs = size; // use model size for scaling
-    
-    // Main hair volume (top)
-    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.3, 32, 32, 0, Math.PI*2, 0, Math.PI*0.55), hairMat);
-    hairTop.position.set(0, hs.y * 0.15, -hs.z * 0.03);
-    hairTop.scale.set(1.05, 0.9, 1.1);
-    hairGroup.add(hairTop);
-    
-    // Hair back (flows down neck)
-    const hairBack = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.28, 24, 24, 0, Math.PI*2, 0, Math.PI*0.7), hairMat);
-    hairBack.position.set(0, hs.y * 0.02, -hs.z * 0.1);
-    hairBack.scale.set(0.95, 1.2, 0.8);
-    hairGroup.add(hairBack);
-    
-    // Left side
-    const sideL = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.12, 16, 16), hairMat);
-    sideL.position.set(-hs.x * 0.28, -hs.y * 0.02, -hs.z * 0.02);
-    sideL.scale.set(0.5, 1.3, 0.7);
-    hairGroup.add(sideL);
-    
-    // Right side
-    const sideR = sideL.clone();
-    sideR.position.x = hs.x * 0.28;
-    hairGroup.add(sideR);
-    
-    // Bangs (front fringe)
-    const bangs = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.27, 24, 16, 0, Math.PI*2, 0, Math.PI*0.28), hairMat);
-    bangs.position.set(0, hs.y * 0.2, hs.z * 0.06);
-    bangs.scale.set(1.0, 0.5, 0.7);
-    hairGroup.add(bangs);
-    
-    // Long strands (back, flowing down)
-    for (var i = 0; i < 7; i++) {
-        var strand = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.04, hs.y * 0.3, 4, 8), hairMat);
-        var angle = (i / 7) * Math.PI * 0.8 - Math.PI * 0.4;
-        strand.position.set(Math.sin(angle) * hs.x * 0.22, -hs.y * 0.2, -hs.z * 0.12);
-        strand.rotation.z = angle * 0.2;
-        hairGroup.add(strand);
-    }
-    
-    headGroup.add(hairGroup);
-    
-    console.log('✅ Face loaded with hair! Morph targets:', Object.keys(morphDict).length);
-    if (Object.keys(morphDict).length > 0) {
-        console.log('Available:', Object.keys(morphDict).slice(0, 15).join(', '), '...');
-    }
-    document.getElementById('loadMsg').style.display = 'none';
-    document.getElementById('rT').textContent = '';
-    
-    // Connect WebSocket (session starts when person detected by camera)
-    setTimeout(function() { conn(); }, 300);
-    
-}, function(p) {
-    if (p.total > 0) {
-        var pct = Math.round(p.loaded / p.total * 100);
-        document.getElementById('loadMsg').textContent = 'Loading 3D avatar... ' + pct + '%';
-    }
-}, function(err) {
-    console.error('Model load error:', err);
-    document.getElementById('loadMsg').textContent = 'Model loaded with issues';
-    document.getElementById('rT').textContent = 'Click anywhere to start';
-});
-
-function setMorph(name, val) {
-    if (morphMesh && morphDict[name] !== undefined) {
-        morphMesh.morphTargetInfluences[morphDict[name]] = val;
-    }
+// If the portrait fails to load, keep the app fully functional (no broken UI).
+if (_img) {
+    _img.onerror = function(){
+        // Try a couple of alternate filenames, then give a neutral background.
+        const alts = ['/static/receptionist.jpg','/static/receptionist.png','/static/receptionist.webp'];
+        const next = alts.find(function(u){ return !_img.src.endsWith(u); });
+        if (next) { _img.src = next; }
+        else { _img.style.display = 'none'; }
+    };
 }
 
-// ===== ANIMATION =====
-function animate() {
+function animate(){
     requestAnimationFrame(animate);
-    const delta = clock.getDelta();
-    const t = clock.elapsedTime;
-    
-    // Update controls (drag/zoom/pan)
-    controls.update();
-    
-    // Update animation mixer (plays idle animation)
-    if (window._mixer) window._mixer.update(delta);
-    
-    if (headGroup) {
-        // Subtle idle head movement
-        headGroup.rotation.y = Math.sin(t * 0.4) * 0.03;
-        headGroup.rotation.x = Math.sin(t * 0.5) * 0.015;
+    // Smooth the mouth so it doesn't jitter.
+    mouthShown += (mouthVal - mouthShown) * (mouthVal > mouthShown ? 0.5 : 0.3);
+    if (_mouth) {
+        _mouth.style.transform = 'translate(-50%,-50%) scaleY(' + (0.15 + mouthShown * 1.0).toFixed(3) + ')';
+        _mouth.style.opacity = mouthShown > 0.06 ? 0.78 : 0;
     }
-    
-    // === FULL FACIAL EXPRESSIONS (all available morph targets) ===
-    
-    // JAW / MOUTH - realistic lip sync with varied shapes
-    setMorph('jawOpen', mouthVal * 0.75);
-    setMorph('jawForward', mouthVal * 0.1);
-    setMorph('jawLeft', Math.sin(t * 2.5) * 0.03 * mouthVal);
-    setMorph('jawRight', Math.cos(t * 2.5) * 0.03 * mouthVal);
-    setMorph('mouthOpen', mouthVal * 0.55);
-    setMorph('mouthClose', mouthVal < 0.1 ? 0.3 : 0);
-    setMorph('mouthFunnel', mouthVal > 0.5 ? mouthVal * 0.3 : 0);
-    setMorph('mouthPucker', mouthVal > 0.3 && mouthVal < 0.5 ? 0.25 : 0);
-    setMorph('mouthLeft', Math.sin(t * 3.2) * 0.06 * mouthVal);
-    setMorph('mouthRight', Math.cos(t * 3.2) * 0.06 * mouthVal);
-    setMorph('mouthRollUpper', mouthVal * 0.15);
-    setMorph('mouthRollLower', mouthVal * 0.2);
-    setMorph('mouthShrugUpper', mouthVal > 0.4 ? 0.2 : 0);
-    setMorph('mouthShrugLower', mouthVal > 0.4 ? 0.15 : 0);
-    setMorph('mouthStretch_L', mouthVal * 0.1);
-    setMorph('mouthStretch_R', mouthVal * 0.1);
-    setMorph('mouthDimple_L', mouthVal > 0.3 ? 0.15 : 0);
-    setMorph('mouthDimple_R', mouthVal > 0.3 ? 0.15 : 0);
-    setMorph('mouthUpperUp_L', mouthVal * 0.12);
-    setMorph('mouthUpperUp_R', mouthVal * 0.12);
-    setMorph('mouthLowerDown_L', mouthVal * 0.2);
-    setMorph('mouthLowerDown_R', mouthVal * 0.2);
-    setMorph('mouthPress_L', mouthVal < 0.1 ? 0.1 : 0);
-    setMorph('mouthPress_R', mouthVal < 0.1 ? 0.1 : 0);
-    
-    // SMILE (natural when idle, reduced when speaking)
-    const smileAmt = mouthVal < 0.05 ? 0.3 : 0.05;
-    setMorph('mouthSmile_L', smileAmt);
-    setMorph('mouthSmile_R', smileAmt);
-    setMorph('mouthSmileLeft', smileAmt);
-    setMorph('mouthSmileRight', smileAmt);
-    setMorph('mouthFrown_L', 0);
-    setMorph('mouthFrown_R', 0);
-    
-    // EYES - blink
-    setMorph('eyeBlink_L', blinkVal);
-    setMorph('eyeBlink_R', blinkVal);
-    setMorph('eyeBlinkLeft', blinkVal);
-    setMorph('eyeBlinkRight', blinkVal);
-    
-    // EYES - wide open when speaking expressively
-    setMorph('eyeWide_L', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWide_R', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWideLeft', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWideRight', mouthVal > 0.5 ? 0.2 : 0);
-    
-    // EYES - squint slightly with smile
-    setMorph('eyeSquint_L', smileAmt * 0.4);
-    setMorph('eyeSquint_R', smileAmt * 0.4);
-    setMorph('eyeSquintLeft', smileAmt * 0.4);
-    setMorph('eyeSquintRight', smileAmt * 0.4);
-    
-    // EYE GAZE - natural movement (looks around subtly)
-    setMorph('eyeLookUp_L', Math.max(0, Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookUp_R', Math.max(0, Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookDown_L', Math.max(0, -Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookDown_R', Math.max(0, -Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookIn_L', Math.max(0, Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookOut_L', Math.max(0, -Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookIn_R', Math.max(0, -Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookOut_R', Math.max(0, Math.sin(t * 0.4) * 0.1));
-    
-    // EYEBROWS - expressive during speech
-    setMorph('browInnerUp', mouthVal > 0.3 ? 0.4 : 0.08);
-    setMorph('browOuterUp_L', mouthVal > 0.4 ? 0.3 : 0.02);
-    setMorph('browOuterUp_R', mouthVal > 0.4 ? 0.3 : 0.02);
-    setMorph('browDown_L', mouthVal > 0.6 ? 0.15 : 0);
-    setMorph('browDown_R', mouthVal > 0.6 ? 0.15 : 0);
-    
-    // CHEEKS
-    setMorph('cheekPuff', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('cheekSquint_L', smileAmt * 0.6);
-    setMorph('cheekSquint_R', smileAmt * 0.6);
-    
-    // NOSE
-    setMorph('noseSneer_L', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('noseSneer_R', mouthVal > 0.5 ? 0.2 : 0);
-    
-    // TONGUE (if available)
-    setMorph('tongueOut', mouthVal > 0.7 ? 0.05 : 0);
-    
-    renderer.render(scene, camera);
+    if (_mouthShadow) { _mouthShadow.style.opacity = (mouthShown * 0.5).toFixed(3); }
+    if (_eyeL) { _eyeL.style.opacity = blinkVal; }
+    if (_eyeR) { _eyeR.style.opacity = blinkVal; }
 }
 animate();
 
@@ -356,7 +107,9 @@ animate();
 function doBlink() { blinkVal = 1; setTimeout(() => blinkVal = 0, 130); setTimeout(doBlink, 2500 + Math.random() * 4000); }
 setTimeout(doBlink, 1500);
 
-// Mouse tracking disabled (using OrbitControls instead)
+// Start the conversation WebSocket shortly after load (previously done in the
+// 3D model's onLoad callback).
+setTimeout(function(){ if (typeof conn === 'function') conn(); }, 300);
 
 // Speaking mouth - more varied like real speech
 let spkI = null;
