@@ -279,6 +279,7 @@ function ReceptionistPage() {
               isListening={isListening}
               state={avatarState}
               name={visitorName || undefined}
+              audioRef={audioRef}
             />
 
             {/* Controls */}
