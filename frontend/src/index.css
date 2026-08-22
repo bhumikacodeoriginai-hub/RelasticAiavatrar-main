@@ -30,7 +30,8 @@
 
   .avatar-container {
     @apply relative w-full max-w-md mx-auto aspect-square rounded-full overflow-hidden;
-    background: radial-gradient(ellipse at center, #1e3a5f 0%, #0f172a 100%);
+    background: radial-gradient(ellipse at 50% 35%, #24466e 0%, #14233c 55%, #0b1220 100%);
+    box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.55);
   }
 
   .conversation-bubble {
@@ -46,14 +47,56 @@
   }
 }
 
-/* Avatar speaking animation */
-.avatar-speaking .avatar-mouth {
-  animation: mouth-move 0.15s ease-in-out infinite alternate;
+/* Realistic avatar face + subtle life-like motion.
+   The mouth itself is now driven per-frame from real audio amplitude in
+   Avatar.tsx, so we no longer scale it via CSS. These animations only add
+   the subtle "living" feel (breathing, gentle sway) and speaking energy. */
+.avatar-face {
+  transform-origin: 50% 60%;
+  animation: avatar-breathe 5s ease-in-out infinite;
 }
 
-@keyframes mouth-move {
-  0% { transform: scaleY(1); }
-  100% { transform: scaleY(1.4); }
+.avatar-head {
+  transform-origin: 150px 240px;
+  animation: avatar-sway 7s ease-in-out infinite;
+}
+
+/* A touch more energy/lean while speaking */
+.avatar-speaking .avatar-head {
+  animation: avatar-sway 4s ease-in-out infinite;
+}
+
+/* Gentle brow lift when listening (engaged/attentive look) */
+.avatar-listening .avatar-brow {
+  animation: brow-lift 2.4s ease-in-out infinite;
+}
+
+@keyframes avatar-breathe {
+  0%,
+  100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.012); }
+}
+
+@keyframes avatar-sway {
+  0%,
+  100% { transform: rotate(-1deg) translateX(-2px); }
+  50% { transform: rotate(1.2deg) translateX(2px); }
+}
+
+@keyframes brow-lift {
+  0%,
+  100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes glow {
+  0%,
+  100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.animate-glow {
+  animation: glow 1.6s ease-in-out infinite;
 }
 
 /* Audio wave animation */
