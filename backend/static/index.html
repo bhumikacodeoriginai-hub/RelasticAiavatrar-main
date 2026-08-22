@@ -114,145 +114,185 @@ controls.minDistance = 10;
 controls.maxDistance = 300;
 controls.target.set(0, 5, 0);
 
-// ===== LOAD REAL 3D HUMAN FACE (THREE.JS OFFICIAL) =====
-let morphMesh = null, morphDict = {}, headGroup = null;
+// ===== LOAD REAL 3D HUMAN HEAD =====
+// Primary: a higher-quality Ready Player Me head (real skin/eyes/hair textures)
+// with ARKit blendshapes for lip-sync. Fallback: the original facecap.glb, so
+// the live app NEVER breaks if the RPM model can't be fetched.
+//
+// RPM splits its ARKit blendshapes across several meshes (Wolf3D_Head,
+// Wolf3D_Teeth, EyeLeft, EyeRight...), so we keep an ARRAY of morph meshes and
+// apply each blendshape to every mesh that has it.
+let morphMeshes = [];         // [{ mesh, dict }]
+let morphNames = {};          // set of all available morph names (for logging)
+let headGroup = null;
+let modelKind = 'rpm';        // 'rpm' or 'facecap' (affects framing / fake hair)
 const clock = new THREE.Clock();
 let mouthVal = 0, blinkVal = 0, headRY = 0, headRX = 0;
+let mouthSmooth = 0; // smoothed mouth value for natural lip motion
 
 const loader = new GLTFLoader();
 
-// KTX2 + Meshopt decoders (required for FaceCap model)
+// KTX2 + Meshopt decoders (required for FaceCap; harmless for RPM)
 const ktx2Loader = new KTX2Loader();
 ktx2Loader.setTranscoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/basis/');
 ktx2Loader.detectSupport(renderer);
 loader.setKTX2Loader(ktx2Loader);
 loader.setMeshoptDecoder(MeshoptDecoder);
 
-// Load FaceCap - realistic 3D face with 52 ARKit morph targets
-document.getElementById('loadMsg').textContent = 'Loading 3D face with expressions...';
+// A public Ready Player Me half-body avatar, requested with ARKit blendshapes.
+// (Override at runtime with window.AVATAR_RPM_URL before this script runs.)
+const RPM_URL = (window.AVATAR_RPM_URL) ||
+    'https://models.readyplayer.me/64bfa15f0e72c63d7c3934a6.glb?morphTargets=ARKit&textureAtlas=none&lod=0';
+const FACECAP_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb';
 
-loader.load('https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/facecap.glb', function(gltf) {
-    headGroup = gltf.scene;
-    scene.add(headGroup);
-    
-    // Auto-frame face in view
-    const box = new THREE.Box3().setFromObject(headGroup);
-    const center = box.getCenter(new THREE.Vector3());
-    const size = box.getSize(new THREE.Vector3());
-    console.log('FaceCap size:', size.x.toFixed(3), size.y.toFixed(3), size.z.toFixed(3));
-    
-    headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
-    const maxDim = Math.max(size.x, size.y, size.z);
-    // Face fills most of the screen
-    camera.position.set(0, 0, maxDim * 1.1);
-    camera.lookAt(0, 0, 0);
-    controls.target.set(0, 0, 0);
-    controls.minDistance = maxDim * 0.5;
-    controls.maxDistance = maxDim * 4;
-    camera.near = 0.001;
-    camera.far = 100;
-    camera.updateProjectionMatrix();
-    
-    // Play animation if available
-    if (gltf.animations && gltf.animations.length > 0) {
-        var mixer = new THREE.AnimationMixer(headGroup);
-        var action = mixer.clipAction(gltf.animations[0]);
-        action.play();
-        // Store mixer for update loop
-        window._mixer = mixer;
-    }
-
-    // Find ALL meshes with morph targets
-    headGroup.traverse(function(child) {
+function collectMorphMeshes(root) {
+    morphMeshes = [];
+    morphNames = {};
+    root.traverse(function(child) {
         if (child.isMesh) {
             if (child.morphTargetInfluences && child.morphTargetDictionary) {
-                morphMesh = child;
-                morphDict = child.morphTargetDictionary;
-            }
-            if (child.material) {
-                // Skin is matte, not glossy — higher roughness + lower env
-                // reflection removes the plastic/"doll" sheen.
-                child.material.roughness = 0.72;
-                child.material.metalness = 0.0;
-                child.material.envMapIntensity = 0.35;
-                // Warm, natural skin tone if the model has no baked texture.
-                if (!child.material.map) {
-                    child.material.color = new THREE.Color(0xe8b78f);
-                }
-                child.material.needsUpdate = true;
+                morphMeshes.push({ mesh: child, dict: child.morphTargetDictionary });
+                Object.keys(child.morphTargetDictionary).forEach(function(k){ morphNames[k] = true; });
             }
         }
     });
-    
-    // === ADD REALISTIC DARK HAIR ===
+}
+
+function tuneMaterials(root, kind) {
+    root.traverse(function(child) {
+        if (child.isMesh && child.material) {
+            var mats = Array.isArray(child.material) ? child.material : [child.material];
+            mats.forEach(function(m){
+                var nm = (child.name || '').toLowerCase();
+                // Eyes / teeth stay a bit glossy; skin is matte to avoid the
+                // plastic "doll" sheen.
+                var isEye = nm.indexOf('eye') !== -1;
+                var isTeeth = nm.indexOf('teeth') !== -1;
+                if (m.roughness !== undefined) {
+                    m.roughness = isEye ? 0.25 : (isTeeth ? 0.4 : 0.72);
+                }
+                if (m.metalness !== undefined) m.metalness = 0.0;
+                if (m.envMapIntensity !== undefined) m.envMapIntensity = isEye ? 0.7 : 0.35;
+                // Only invent a skin color when the mesh has no real texture
+                // (facecap fallback). RPM ships proper skin textures — keep them.
+                if (!m.map && kind === 'facecap' && m.color) {
+                    m.color = new THREE.Color(0xe8b78f);
+                }
+                m.needsUpdate = true;
+            });
+        }
+    });
+}
+
+function frameHead(kind) {
+    const box = new THREE.Box3().setFromObject(headGroup);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+
+    if (kind === 'rpm') {
+        // RPM is a half-body: focus the camera on the head (top ~28% of body).
+        const headY = box.max.y - size.y * 0.14;   // approx eye/head level
+        headGroup.position.set(-center.x, -center.y, -center.z);
+        const target = new THREE.Vector3(0, headY - center.y, 0);
+        controls.target.copy(target);
+        const headSpan = size.y * 0.28;             // rough head height
+        camera.position.set(0, target.y, headSpan * 3.1);
+        camera.near = 0.01; camera.far = 100;
+        controls.minDistance = headSpan * 1.4;
+        controls.maxDistance = headSpan * 8;
+    } else {
+        headGroup.position.set(-center.x, -center.y + size.y * 0.05, -center.z);
+        const maxDim = Math.max(size.x, size.y, size.z);
+        camera.position.set(0, 0, maxDim * 1.1);
+        controls.target.set(0, 0, 0);
+        controls.minDistance = maxDim * 0.5;
+        controls.maxDistance = maxDim * 4;
+        camera.near = 0.001; camera.far = 100;
+    }
+    camera.lookAt(controls.target);
+    camera.updateProjectionMatrix();
+}
+
+// Fake sculpted hair — ONLY used for the facecap fallback (RPM has real hair).
+function addFakeHair(size) {
     const hairMat = new THREE.MeshStandardMaterial({color: 0x080605, roughness: 0.7, metalness: 0.05});
     const hairGroup = new THREE.Group();
-    const hs = size; // use model size for scaling
-    
-    // Main hair volume (top)
+    const hs = size;
     const hairTop = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.3, 32, 32, 0, Math.PI*2, 0, Math.PI*0.55), hairMat);
-    hairTop.position.set(0, hs.y * 0.15, -hs.z * 0.03);
-    hairTop.scale.set(1.05, 0.9, 1.1);
-    hairGroup.add(hairTop);
-    
-    // Hair back (flows down neck)
+    hairTop.position.set(0, hs.y * 0.15, -hs.z * 0.03); hairTop.scale.set(1.05, 0.9, 1.1); hairGroup.add(hairTop);
     const hairBack = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.28, 24, 24, 0, Math.PI*2, 0, Math.PI*0.7), hairMat);
-    hairBack.position.set(0, hs.y * 0.02, -hs.z * 0.1);
-    hairBack.scale.set(0.95, 1.2, 0.8);
-    hairGroup.add(hairBack);
-    
-    // Left side
+    hairBack.position.set(0, hs.y * 0.02, -hs.z * 0.1); hairBack.scale.set(0.95, 1.2, 0.8); hairGroup.add(hairBack);
     const sideL = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.12, 16, 16), hairMat);
-    sideL.position.set(-hs.x * 0.28, -hs.y * 0.02, -hs.z * 0.02);
-    sideL.scale.set(0.5, 1.3, 0.7);
-    hairGroup.add(sideL);
-    
-    // Right side
-    const sideR = sideL.clone();
-    sideR.position.x = hs.x * 0.28;
-    hairGroup.add(sideR);
-    
-    // Bangs (front fringe)
+    sideL.position.set(-hs.x * 0.28, -hs.y * 0.02, -hs.z * 0.02); sideL.scale.set(0.5, 1.3, 0.7); hairGroup.add(sideL);
+    const sideR = sideL.clone(); sideR.position.x = hs.x * 0.28; hairGroup.add(sideR);
     const bangs = new THREE.Mesh(new THREE.SphereGeometry(hs.x * 0.27, 24, 16, 0, Math.PI*2, 0, Math.PI*0.28), hairMat);
-    bangs.position.set(0, hs.y * 0.2, hs.z * 0.06);
-    bangs.scale.set(1.0, 0.5, 0.7);
-    hairGroup.add(bangs);
-    
-    // Long strands (back, flowing down)
+    bangs.position.set(0, hs.y * 0.2, hs.z * 0.06); bangs.scale.set(1.0, 0.5, 0.7); hairGroup.add(bangs);
     for (var i = 0; i < 7; i++) {
         var strand = new THREE.Mesh(new THREE.CapsuleGeometry(hs.x * 0.04, hs.y * 0.3, 4, 8), hairMat);
         var angle = (i / 7) * Math.PI * 0.8 - Math.PI * 0.4;
         strand.position.set(Math.sin(angle) * hs.x * 0.22, -hs.y * 0.2, -hs.z * 0.12);
-        strand.rotation.z = angle * 0.2;
-        hairGroup.add(strand);
+        strand.rotation.z = angle * 0.2; hairGroup.add(strand);
     }
-    
     headGroup.add(hairGroup);
-    
-    console.log('✅ Face loaded with hair! Morph targets:', Object.keys(morphDict).length);
-    if (Object.keys(morphDict).length > 0) {
-        console.log('Available:', Object.keys(morphDict).slice(0, 15).join(', '), '...');
+}
+
+function onModelLoaded(gltf, kind) {
+    headGroup = gltf.scene;
+    modelKind = kind;
+    scene.add(headGroup);
+
+    collectMorphMeshes(headGroup);
+    tuneMaterials(headGroup, kind);
+    frameHead(kind);
+
+    // Idle animation only exists on facecap; RPM head has none by default.
+    if (gltf.animations && gltf.animations.length > 0) {
+        var mixer = new THREE.AnimationMixer(headGroup);
+        mixer.clipAction(gltf.animations[0]).play();
+        window._mixer = mixer;
     }
+
+    if (kind === 'facecap') {
+        var box = new THREE.Box3().setFromObject(headGroup);
+        addFakeHair(box.getSize(new THREE.Vector3()));
+    }
+
+    console.log('✅ Avatar loaded (' + kind + '). Morph targets:', Object.keys(morphNames).length, Object.keys(morphNames).slice(0, 12).join(', '));
     document.getElementById('loadMsg').style.display = 'none';
     document.getElementById('rT').textContent = '';
-    
+
     // Connect WebSocket (session starts when person detected by camera)
     setTimeout(function() { conn(); }, 300);
-    
-}, function(p) {
-    if (p.total > 0) {
-        var pct = Math.round(p.loaded / p.total * 100);
-        document.getElementById('loadMsg').textContent = 'Loading 3D avatar... ' + pct + '%';
-    }
-}, function(err) {
-    console.error('Model load error:', err);
-    document.getElementById('loadMsg').textContent = 'Model loaded with issues';
-    document.getElementById('rT').textContent = 'Click anywhere to start';
-});
+}
+
+function loadFacecap() {
+    document.getElementById('loadMsg').textContent = 'Loading 3D face...';
+    loader.load(FACECAP_URL, function(gltf){ onModelLoaded(gltf, 'facecap'); },
+        function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading 3D avatar... ' + Math.round(p.loaded/p.total*100) + '%'; },
+        function(err){
+            console.error('Facecap load error:', err);
+            document.getElementById('loadMsg').textContent = 'Avatar failed to load';
+            document.getElementById('rT').textContent = '';
+            // Even if the model fails, keep the app alive.
+            setTimeout(function(){ conn(); }, 300);
+        });
+}
+
+// Try the high-quality RPM head first; fall back to facecap on any error.
+document.getElementById('loadMsg').textContent = 'Loading realistic 3D head...';
+loader.load(RPM_URL, function(gltf){ onModelLoaded(gltf, 'rpm'); },
+    function(p){ if (p.total > 0) document.getElementById('loadMsg').textContent = 'Loading realistic head... ' + Math.round(p.loaded/p.total*100) + '%'; },
+    function(err){
+        console.warn('RPM head failed, falling back to facecap:', err);
+        loadFacecap();
+    });
 
 function setMorph(name, val) {
-    if (morphMesh && morphDict[name] !== undefined) {
-        morphMesh.morphTargetInfluences[morphDict[name]] = val;
+    // Apply to every mesh that exposes this blendshape (RPM = multi-mesh).
+    for (var i = 0; i < morphMeshes.length; i++) {
+        var mm = morphMeshes[i];
+        var idx = mm.dict[name];
+        if (idx !== undefined) mm.mesh.morphTargetInfluences[idx] = val;
     }
 }
 
@@ -269,95 +309,95 @@ function animate() {
     if (window._mixer) window._mixer.update(delta);
     
     if (headGroup) {
-        // Subtle idle head movement
-        headGroup.rotation.y = Math.sin(t * 0.4) * 0.03;
-        headGroup.rotation.x = Math.sin(t * 0.5) * 0.015;
+        // Subtle, natural idle head movement (gentle look-around + tiny nod).
+        // A touch more life while speaking. Kept small so it never looks robotic.
+        var speakBoost = (typeof speaking !== 'undefined' && speaking) ? 1.6 : 1.0;
+        headGroup.rotation.y = (Math.sin(t * 0.35) * 0.028 + Math.sin(t * 0.13) * 0.012) * speakBoost;
+        headGroup.rotation.x = (Math.sin(t * 0.5) * 0.014 + Math.sin(t * 0.9) * 0.006 * (speakBoost - 1)) ;
     }
-    
+
+    // Smooth the raw mouth value so lips glide between shapes instead of
+    // snapping — makes the lip-sync read far more natural.
+    mouthSmooth += (mouthVal - mouthSmooth) * (mouthVal > mouthSmooth ? 0.55 : 0.32);
+    var mv = mouthSmooth;
+
     // === FULL FACIAL EXPRESSIONS (all available morph targets) ===
     
-    // JAW / MOUTH - realistic lip sync with varied shapes
-    setMorph('jawOpen', mouthVal * 0.75);
-    setMorph('jawForward', mouthVal * 0.1);
-    setMorph('jawLeft', Math.sin(t * 2.5) * 0.03 * mouthVal);
-    setMorph('jawRight', Math.cos(t * 2.5) * 0.03 * mouthVal);
-    setMorph('mouthOpen', mouthVal * 0.55);
-    setMorph('mouthClose', mouthVal < 0.1 ? 0.3 : 0);
-    setMorph('mouthFunnel', mouthVal > 0.5 ? mouthVal * 0.3 : 0);
-    setMorph('mouthPucker', mouthVal > 0.3 && mouthVal < 0.5 ? 0.25 : 0);
-    setMorph('mouthLeft', Math.sin(t * 3.2) * 0.06 * mouthVal);
-    setMorph('mouthRight', Math.cos(t * 3.2) * 0.06 * mouthVal);
-    setMorph('mouthRollUpper', mouthVal * 0.15);
-    setMorph('mouthRollLower', mouthVal * 0.2);
-    setMorph('mouthShrugUpper', mouthVal > 0.4 ? 0.2 : 0);
-    setMorph('mouthShrugLower', mouthVal > 0.4 ? 0.15 : 0);
-    setMorph('mouthStretch_L', mouthVal * 0.1);
-    setMorph('mouthStretch_R', mouthVal * 0.1);
-    setMorph('mouthDimple_L', mouthVal > 0.3 ? 0.15 : 0);
-    setMorph('mouthDimple_R', mouthVal > 0.3 ? 0.15 : 0);
-    setMorph('mouthUpperUp_L', mouthVal * 0.12);
-    setMorph('mouthUpperUp_R', mouthVal * 0.12);
-    setMorph('mouthLowerDown_L', mouthVal * 0.2);
-    setMorph('mouthLowerDown_R', mouthVal * 0.2);
-    setMorph('mouthPress_L', mouthVal < 0.1 ? 0.1 : 0);
-    setMorph('mouthPress_R', mouthVal < 0.1 ? 0.1 : 0);
-    
-    // SMILE (natural when idle, reduced when speaking)
-    const smileAmt = mouthVal < 0.05 ? 0.3 : 0.05;
-    setMorph('mouthSmile_L', smileAmt);
-    setMorph('mouthSmile_R', smileAmt);
-    setMorph('mouthSmileLeft', smileAmt);
-    setMorph('mouthSmileRight', smileAmt);
-    setMorph('mouthFrown_L', 0);
-    setMorph('mouthFrown_R', 0);
-    
-    // EYES - blink
-    setMorph('eyeBlink_L', blinkVal);
-    setMorph('eyeBlink_R', blinkVal);
-    setMorph('eyeBlinkLeft', blinkVal);
-    setMorph('eyeBlinkRight', blinkVal);
-    
-    // EYES - wide open when speaking expressively
-    setMorph('eyeWide_L', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWide_R', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWideLeft', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('eyeWideRight', mouthVal > 0.5 ? 0.2 : 0);
-    
+    // JAW / MOUTH - smoothed, natural lip sync. Names cover BOTH facecap
+    // (_L/_R) and Ready Player Me (Left/Right) ARKit conventions.
+    setMorph('jawOpen', mv * 0.7);
+    setMorph('jawForward', mv * 0.08);
+    setMorph('mouthOpen', mv * 0.5);
+    setMorph('mouthClose', mv < 0.1 ? 0.25 : 0);
+    setMorph('mouthFunnel', mv > 0.5 ? mv * 0.28 : 0);
+    setMorph('mouthPucker', (mv > 0.3 && mv < 0.5) ? 0.22 : 0);
+    setMorph('mouthRollUpper', mv * 0.12);
+    setMorph('mouthRollLower', mv * 0.16);
+    setMorph('mouthShrugUpper', mv > 0.4 ? 0.16 : 0);
+    setMorph('mouthShrugLower', mv > 0.4 ? 0.12 : 0);
+    // Upper/lower lip raise — both naming conventions
+    setMorph('mouthUpperUp_L', mv * 0.12); setMorph('mouthUpperUp_R', mv * 0.12);
+    setMorph('mouthUpperUpLeft', mv * 0.12); setMorph('mouthUpperUpRight', mv * 0.12);
+    setMorph('mouthLowerDown_L', mv * 0.18); setMorph('mouthLowerDown_R', mv * 0.18);
+    setMorph('mouthLowerDownLeft', mv * 0.18); setMorph('mouthLowerDownRight', mv * 0.18);
+    setMorph('mouthStretch_L', mv * 0.08); setMorph('mouthStretch_R', mv * 0.08);
+    setMorph('mouthStretchLeft', mv * 0.08); setMorph('mouthStretchRight', mv * 0.08);
+    setMorph('mouthDimple_L', mv > 0.3 ? 0.12 : 0); setMorph('mouthDimple_R', mv > 0.3 ? 0.12 : 0);
+    setMorph('mouthDimpleLeft', mv > 0.3 ? 0.12 : 0); setMorph('mouthDimpleRight', mv > 0.3 ? 0.12 : 0);
+    setMorph('mouthPress_L', mv < 0.1 ? 0.08 : 0); setMorph('mouthPress_R', mv < 0.1 ? 0.08 : 0);
+    setMorph('mouthPressLeft', mv < 0.1 ? 0.08 : 0); setMorph('mouthPressRight', mv < 0.1 ? 0.08 : 0);
+
+    // SMILE (gentle friendly resting smile, relaxes while speaking)
+    const smileAmt = mv < 0.05 ? 0.22 : 0.05;
+    setMorph('mouthSmile_L', smileAmt); setMorph('mouthSmile_R', smileAmt);
+    setMorph('mouthSmileLeft', smileAmt); setMorph('mouthSmileRight', smileAmt);
+    setMorph('mouthFrown_L', 0); setMorph('mouthFrown_R', 0);
+    setMorph('mouthFrownLeft', 0); setMorph('mouthFrownRight', 0);
+
+    // EYES - blink (both conventions)
+    setMorph('eyeBlink_L', blinkVal); setMorph('eyeBlink_R', blinkVal);
+    setMorph('eyeBlinkLeft', blinkVal); setMorph('eyeBlinkRight', blinkVal);
+
+    // EYES - slight widen on strong syllables
+    const wide = mv > 0.55 ? 0.15 : 0;
+    setMorph('eyeWide_L', wide); setMorph('eyeWide_R', wide);
+    setMorph('eyeWideLeft', wide); setMorph('eyeWideRight', wide);
+
     // EYES - squint slightly with smile
-    setMorph('eyeSquint_L', smileAmt * 0.4);
-    setMorph('eyeSquint_R', smileAmt * 0.4);
-    setMorph('eyeSquintLeft', smileAmt * 0.4);
-    setMorph('eyeSquintRight', smileAmt * 0.4);
-    
-    // EYE GAZE - natural movement (looks around subtly)
-    setMorph('eyeLookUp_L', Math.max(0, Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookUp_R', Math.max(0, Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookDown_L', Math.max(0, -Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookDown_R', Math.max(0, -Math.sin(t * 0.6) * 0.15));
-    setMorph('eyeLookIn_L', Math.max(0, Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookOut_L', Math.max(0, -Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookIn_R', Math.max(0, -Math.sin(t * 0.4) * 0.1));
-    setMorph('eyeLookOut_R', Math.max(0, Math.sin(t * 0.4) * 0.1));
-    
-    // EYEBROWS - expressive during speech
-    setMorph('browInnerUp', mouthVal > 0.3 ? 0.4 : 0.08);
-    setMorph('browOuterUp_L', mouthVal > 0.4 ? 0.3 : 0.02);
-    setMorph('browOuterUp_R', mouthVal > 0.4 ? 0.3 : 0.02);
-    setMorph('browDown_L', mouthVal > 0.6 ? 0.15 : 0);
-    setMorph('browDown_R', mouthVal > 0.6 ? 0.15 : 0);
-    
+    setMorph('eyeSquint_L', smileAmt * 0.35); setMorph('eyeSquint_R', smileAmt * 0.35);
+    setMorph('eyeSquintLeft', smileAmt * 0.35); setMorph('eyeSquintRight', smileAmt * 0.35);
+
+    // EYE GAZE - subtle natural look-around
+    const gU = Math.max(0, Math.sin(t * 0.6) * 0.12), gD = Math.max(0, -Math.sin(t * 0.6) * 0.12);
+    setMorph('eyeLookUp_L', gU); setMorph('eyeLookUp_R', gU);
+    setMorph('eyeLookUpLeft', gU); setMorph('eyeLookUpRight', gU);
+    setMorph('eyeLookDown_L', gD); setMorph('eyeLookDown_R', gD);
+    setMorph('eyeLookDownLeft', gD); setMorph('eyeLookDownRight', gD);
+    const gIn = Math.max(0, Math.sin(t * 0.4) * 0.08), gOut = Math.max(0, -Math.sin(t * 0.4) * 0.08);
+    setMorph('eyeLookIn_L', gIn); setMorph('eyeLookOut_L', gOut);
+    setMorph('eyeLookInLeft', gIn); setMorph('eyeLookOutLeft', gOut);
+    setMorph('eyeLookIn_R', gOut); setMorph('eyeLookOut_R', gIn);
+    setMorph('eyeLookInRight', gOut); setMorph('eyeLookOutRight', gIn);
+
+    // EYEBROWS - lightly expressive during speech
+    setMorph('browInnerUp', mv > 0.3 ? 0.28 : 0.06);
+    setMorph('browOuterUp_L', mv > 0.4 ? 0.22 : 0.02); setMorph('browOuterUp_R', mv > 0.4 ? 0.22 : 0.02);
+    setMorph('browOuterUpLeft', mv > 0.4 ? 0.22 : 0.02); setMorph('browOuterUpRight', mv > 0.4 ? 0.22 : 0.02);
+    setMorph('browDown_L', mv > 0.6 ? 0.1 : 0); setMorph('browDown_R', mv > 0.6 ? 0.1 : 0);
+    setMorph('browDownLeft', mv > 0.6 ? 0.1 : 0); setMorph('browDownRight', mv > 0.6 ? 0.1 : 0);
+
     // CHEEKS
-    setMorph('cheekPuff', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('cheekSquint_L', smileAmt * 0.6);
-    setMorph('cheekSquint_R', smileAmt * 0.6);
-    
+    setMorph('cheekPuff', mv > 0.5 ? 0.12 : 0);
+    setMorph('cheekSquint_L', smileAmt * 0.5); setMorph('cheekSquint_R', smileAmt * 0.5);
+    setMorph('cheekSquintLeft', smileAmt * 0.5); setMorph('cheekSquintRight', smileAmt * 0.5);
+
     // NOSE
-    setMorph('noseSneer_L', mouthVal > 0.5 ? 0.2 : 0);
-    setMorph('noseSneer_R', mouthVal > 0.5 ? 0.2 : 0);
-    
+    setMorph('noseSneer_L', mv > 0.5 ? 0.12 : 0); setMorph('noseSneer_R', mv > 0.5 ? 0.12 : 0);
+    setMorph('noseSneerLeft', mv > 0.5 ? 0.12 : 0); setMorph('noseSneerRight', mv > 0.5 ? 0.12 : 0);
+
     // TONGUE (if available)
-    setMorph('tongueOut', mouthVal > 0.7 ? 0.05 : 0);
-    
+    setMorph('tongueOut', mv > 0.7 ? 0.05 : 0);
+
     renderer.render(scene, camera);
 }
 animate();
