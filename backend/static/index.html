@@ -19,6 +19,9 @@
         .chips{display:flex;gap:6px}.chip{display:flex;align-items:center;gap:4px;padding:4px 8px;border-radius:12px;background:#0f0f15;border:1px solid #1a1a25;font-size:9px;color:#666}.cd{width:5px;height:5px;border-radius:50%}.cd.g{background:#0f0;box-shadow:0 0 4px #0f0}.cd.r{background:#f00}.cd.y{background:#fa0;animation:bl 1.5s infinite}@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}
         .av-wrap{width:100%;height:100%;position:absolute;top:0;left:0}
         #c3d{width:100%;height:100%;display:block}
+        /* D-ID real-human video overlays the 3D canvas when active */
+        #didVid{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;background:#000;z-index:6}
+        #didVid.on{display:block}
         .glow{position:absolute;inset:-4px;border-radius:20px;border:2px solid transparent;transition:all .6s;pointer-events:none}.glow.speaking{border-color:#2563eb;box-shadow:0 0 40px rgba(37,99,235,.15)}.glow.listening{border-color:#10b981;box-shadow:0 0 40px rgba(16,185,129,.12)}.glow.thinking{border-color:#f59e0b;box-shadow:0 0 40px rgba(245,158,11,.12)}
         .wf{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:3px;align-items:flex-end;height:24px;opacity:0;transition:opacity .3s}.wf.on{opacity:1}.wvb{width:3px;border-radius:2px;background:#2563eb;animation:wva .4s ease-in-out infinite alternate}.wvb:nth-child(1){height:5px;animation-delay:0s}.wvb:nth-child(2){height:12px;animation-delay:.06s}.wvb:nth-child(3){height:18px;animation-delay:.12s}.wvb:nth-child(4){height:12px;animation-delay:.06s}.wvb:nth-child(5){height:5px;animation-delay:0s}@keyframes wva{to{height:3px}}
         .stl{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);padding:5px 12px;border-radius:14px;font-size:10px;font-weight:600;background:rgba(15,15,21,0.8);border:1px solid #1a1a25;color:#555;letter-spacing:.3px;z-index:10}.stl.speaking{color:#2563eb;border-color:rgba(37,99,235,.25)}.stl.listening{color:#10b981;border-color:rgba(16,185,129,.25)}.stl.thinking{color:#f59e0b;border-color:rgba(245,158,11,.25)}
@@ -43,7 +46,7 @@
             <div class="logo"><div class="logo-i">CO</div><div><div class="logo-t">Code Origin.AI</div><div class="logo-s">Intelligent Reception</div></div></div>
             <div class="chips"><div class="chip"><div class="cd g"></div>AI</div><div class="chip"><div class="cd" id="dM"></div><span id="lM">—</span></div><div class="chip"><div class="cd" id="dC"></div><span id="lC">...</span></div></div>
         </div>
-        <div class="av-wrap"><div class="loading" id="loadMsg">Loading 3D avatar...</div><canvas id="c3d"></canvas><div class="wf" id="wf"><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div></div></div>
+        <div class="av-wrap"><div class="loading" id="loadMsg">Loading 3D avatar...</div><canvas id="c3d"></canvas><video id="didVid" playsinline></video><div class="wf" id="wf"><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div><div class="wvb"></div></div></div>
         <div class="stl" id="stl">Click anywhere to start</div>
         <div class="resp"><p id="rT">Click anywhere on screen to activate voice</p></div>
         <div class="livs" id="livs"></div>
@@ -461,15 +464,75 @@ function stopMouth() { if (spkI) { clearInterval(spkI); spkI = null; } mouthVal 
 function setS(s){document.getElementById('stl').className='stl '+s;document.getElementById('wf').className='wf'+(s==='speaking'?' on':'');if(s==='speaking'){document.getElementById('stl').textContent='● Speaking';startMouth();document.getElementById('dM').className='cd y';document.getElementById('lM').textContent='Out';}else if(s==='listening'){document.getElementById('stl').textContent='● Listening';stopMouth();document.getElementById('dM').className='cd g';document.getElementById('lM').textContent='On';}else if(s==='thinking'){document.getElementById('stl').textContent='● Processing';stopMouth();document.getElementById('dM').className='cd y';document.getElementById('lM').textContent='...';}else{document.getElementById('stl').textContent='Ready';stopMouth();}}
 
 let speaking=false;
+
+// ---- D-ID real-human avatar (optional) ----
+// If the backend reports D-ID is enabled, we render each AI reply as a
+// photoreal talking-human video. If anything fails, we transparently fall
+// back to the 3D avatar + browser speech (sayWith3D).
+let DID_ENABLED = false;
+fetch('/api/did/status').then(r=>r.json()).then(d=>{ DID_ENABLED = !!(d && d.enabled); console.log('D-ID enabled:', DID_ENABLED); }).catch(()=>{});
+
+function finishSpeaking(){
+    speaking = false;
+    setS('listening');
+    if (personPresent) startRec();
+}
+
 function say(t){
+    if(!t) return;
+    // Always show the text + transcript immediately.
+    document.getElementById('rT').textContent = t;
+    addTx('a', t);
+
+    if (DID_ENABLED) {
+        sayWithDID(t);
+    } else {
+        sayWith3D(t);
+    }
+}
+
+function sayWithDID(t){
+    // Stop any 3D speech/mouth so the two paths never overlap.
+    try { speechSynthesis.cancel(); } catch(e){}
+    stopMouth();
+    speaking = true; stopRec(); setS('speaking');
+
+    fetch('/api/did/speak', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ text: t })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        if (data && data.success && data.video_url) {
+            const vid = document.getElementById('didVid');
+            vid.src = data.video_url;
+            vid.classList.add('on');
+            vid.muted = false;
+            vid.play().then(function(){
+                // Real human video is playing (it has its own audio + lip-sync).
+            }).catch(function(){
+                // Autoplay with sound blocked -> fall back to 3D voice.
+                vid.classList.remove('on');
+                sayWith3D(t);
+            });
+            vid.onended = function(){ vid.classList.remove('on'); finishSpeaking(); };
+            vid.onerror = function(){ vid.classList.remove('on'); sayWith3D(t); };
+        } else {
+            // D-ID failed to generate -> fall back to the 3D avatar.
+            sayWith3D(t);
+        }
+    })
+    .catch(function(){ sayWith3D(t); });
+}
+
+function sayWith3D(t){
     if(!t) return;
     // Stop any current speech cleanly
     speechSynthesis.cancel();
     stopMouth(); // Ensure mouth stops
     
     speaking=true; stopRec(); setS('speaking');
-    document.getElementById('rT').textContent=t;
-    addTx('a',t);
     
     // Wait for voices to load
     let voices = speechSynthesis.getVoices();
@@ -492,17 +555,8 @@ function say(t){
         if(male) u.voice = male;
     }
     
-    u.onend = function() { 
-        speaking=false; 
-        setS('listening'); 
-        // Only start mic if person is still present
-        if(personPresent) startRec(); 
-    };
-    u.onerror = function() { 
-        speaking=false; 
-        setS('listening'); 
-        if(personPresent) startRec(); 
-    };
+    u.onend = function() { finishSpeaking(); };
+    u.onerror = function() { finishSpeaking(); };
     
     speechSynthesis.speak(u);
 }

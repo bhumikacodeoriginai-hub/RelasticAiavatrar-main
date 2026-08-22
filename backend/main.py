@@ -47,6 +47,13 @@ except Exception as e:
     face_router = None
     print(f"⚠️ Some API routers failed to load: {e}")
 
+# D-ID talking-avatar router (optional; safe if httpx or config missing)
+try:
+    from api.did_avatar import router as did_router
+except Exception as e:
+    did_router = None
+    print(f"⚠️ D-ID router not loaded: {e}")
+
 # Configure structured logging
 structlog.configure(
     processors=[
@@ -231,6 +238,7 @@ if employee_router: app.include_router(employee_router)
 app.include_router(websocket_router)
 if dashboard_router: app.include_router(dashboard_router)
 if face_router: app.include_router(face_router)
+if did_router: app.include_router(did_router)
 
 
 # === Health & Status Endpoints ===

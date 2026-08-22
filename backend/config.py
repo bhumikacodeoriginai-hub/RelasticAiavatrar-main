@@ -91,6 +91,21 @@ class Settings(BaseSettings):
     avatar_model_path: str = "./models/avatar"
     avatar_idle_video: str = "./assets/avatar_idle.mp4"
 
+    # D-ID (real-human talking avatar via the Talks API).
+    # Set DID_API_KEY in .env to enable. Never hardcode the key.
+    # DID_SOURCE_URL must be a PUBLICLY reachable image of a REAL human face
+    # (D-ID downloads it). A stylized/AI image may be rejected by face
+    # detection — use a real headshot. If empty, D-ID uses a default presenter.
+    did_api_key: Optional[str] = None
+    did_source_url: str = ""
+    did_api_base: str = "https://api.d-id.com"
+    # Optional Microsoft/D-ID voice for the spoken audio in the generated video.
+    did_voice_id: str = "en-US-JennyNeural"
+
+    @property
+    def did_enabled(self) -> bool:
+        return bool(self.did_api_key and self.did_api_key.strip())
+
     # CORS
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
 
